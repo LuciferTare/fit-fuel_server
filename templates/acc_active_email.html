@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Imprima&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: "Imprima", sans-serif !important;
+            background-color: #F4F4F4;
+            margin: 0;
+            padding: 0;
+        }
+
+        .container {
+            font-family: "Imprima", sans-serif !important;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #FFFFFF;
+        }
+
+        .header-logo img {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .content {
+            border-radius: 14px;
+            background-color: #f6f2f2;
+            padding: 20px;
+        }
+
+        .content2 {
+            border-radius: 14px;
+            background-color: white;
+            text-align: justify;
+            padding: 2rem;
+        }
+
+        .content h1 {
+            color: #333333;
+        }
+
+        .button {
+            background-color: #181A20;
+            color: #FFFFFF !important;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 20px;
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            width: -webkit-fill-available;
+        }
+
+        .footer {
+            text-align: center;
+            padding: 10px 0;
+            font-size: 12px;
+            color: #666666;
+        }
+
+        .contact-bar {
+            background-color: #181A20;
+            border-radius: 20px;
+            padding: 8px 15px;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .contact-bar a {
+            color: #FFFFFF;
+            text-decoration: none;
+            font-size: 14px;
+            padding: 5px 10px;
+            display: inline-block;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="content">
+            {% if logo_url %}
+            <div class="header-logo">
+                <img src="{{ logo_url }}" alt="{{ app_name }} Logo" />
+            </div>
+            {% endif %}
+            <div class="content2">
+                <h1>Dear {{ name }},</h1>
+                <p>Thank you for signing up with {{ app_name }}!</p>
+                <p>To activate your account, please verify your email address by clicking the button below:</p>
+            </div>
+            <a target="_blank" href="{{ activation_url }}" class="button">Confirm Email</a>
+            <p>Best regards,</p>
+            <p>{{ app_name }} Support</p>
+            <hr>
+            <div>
+                <p>This link expires in 24 hours. If you have questions, we're here to help.</p>
+            </div>
+            {% if support_email %}
+            <div class="contact-bar">
+                <a href="mailto:{{ support_email }}">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="#FFFFFF" viewBox="0 0 24 24" style="vertical-align: middle;">
+                        <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+                    </svg>
+                    {{ support_email }}
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+        body {
+            font-family: "Imprima", sans-serif, Arial, sans-serif;
+            background-color: #F4F4F4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #FFFFFF;
+            border-radius: 12px;
+        }
+        .header-logo img {
+            width: 80px;
+            height: 80px;
+            border-radius: 12px;
+            display: block;
+            margin: 0 auto;
+        }
+        .content {
+            border-radius: 14px;
+            background-color: #f6f2f2;
+            padding: 20px;
+            text-align: center;
+        }
+        .content h1 {
+            color: #333333;
+        }
+        .button {
+            background-color: #181A20;
+            color: #FFFFFF !important;
+            padding: 12px 20px;
+            text-decoration: none;
+            border-radius: 20px;
+            display: inline-block;
+            margin-top: 20px;
+        }
+        .secondary {
+            margin-top: 12px;
+            display: block;
+            color: #333;
+        }
+        .footer {
+            text-align: center;
+            padding: 10px 0;
+            font-size: 12px;
+            color: #666666;
+        }
+        .muted { color: #666; font-size: 14px; }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        {% if logo_url %}
+        <div class="header-logo">
+            <img src="{{ logo_url }}" alt="{{ app_name }} Logo" />
+        </div>
+        {% endif %}
+
+        <div class="content">
+            {% if verified %}
+                <h1>Hi {{ name }},</h1>
+                <p class="muted">Your email has been successfully verified!</p>
+            {% else %}
+                <h1>Verification link expired / invalid</h1>
+                <p class="muted">We couldn't verify your email. The link is likely expired or invalid.</p>
+                {% if support_email %}
+                <a class="button" href="mailto:{{ support_email }}?subject=Resend%20verification%20link">Contact Support</a>
+                {% endif %}
+                <p class="secondary">If you need a new link, open the app and request a new verification email.</p>
+            {% endif %}
+        </div>
+
+        <div class="footer">
+            <p>This link expires in 24 hours. If you have questions, we're here to help{% if support_email %}: {{ support_email }}{% endif %}.</p>
+        </div>
+    </div>
+</body>
+
+</html>

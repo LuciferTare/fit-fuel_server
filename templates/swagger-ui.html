@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>API Docs</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3.52.5/swagger-ui.css">
+    <style>
+        * {
+            margin: 0;
+        }
+
+        html {
+            background-color: #1e1e1e;
+        }
+
+        .swagger-ui .scheme-container {
+            background: #bb5f5f;
+        }
+
+        .swagger-ui a.nostyle,
+        .swagger-ui a.nostyle:visited {
+            color: cyan !important;
+        }
+
+        .swagger-ui .opblock .opblock-summary-description {
+            color: #00ffff52 !important;
+        }
+
+        .swagger-ui .opblock .opblock-section-header {
+            align-items: center;
+            background: hsl(0deg 0% 0% / 80%) !important;
+        }
+
+        .swagger-ui textarea {
+            background: #000 !important;
+            color: #eee !important;
+        }
+
+        .swagger-ui .opblock .opblock-section-header h4 {
+            color: #b5b3b3 !important;
+        }
+
+        .swagger-ui {
+            color: #cacfde !important;
+        }
+
+        .swagger-ui .btn {
+            border: 2px solid white;
+            color: #49cc90;
+        }
+
+        ::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background-color: #222121;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background-color: #695f5f;
+            border-radius: 6px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #444;
+        }
+
+        ::-webkit-scrollbar-thumb:active {
+            background-color: #666;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="swagger-ui" style="background-color: #1e1e1e; color: #ffffff !important;"></div>
+    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui-bundle.js"></script>
+    <script>
+        const ui = SwaggerUIBundle({
+            url: "{% url 'schema' %}",
+            dom_id: '#swagger-ui',
+            presets: [
+                SwaggerUIBundle.presets.apis,
+                SwaggerUIBundle.SwaggerUIStandalonePreset
+            ],
+            layout: "BaseLayout",
+            requestInterceptor: (request) => {
+                request.headers['X-CSRFToken'] = "{{ csrf_token }}"
+                return request;
+            },
+            persistAuthorization: true,
+        });
+    </script>
+    <script>
+        document.body.addEventListener("click", function (event) {
+            if (!event.target.closest(".modal-ux")) {
+                var closeModalButton = document.querySelector(".close-modal");
+                if (closeModalButton) closeModalButton.click();
+            }
+        });
+    </script>
+</body>
+
+</html>

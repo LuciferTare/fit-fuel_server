@@ -1,0 +1,7 @@
+  Full Name :  {{full_name}}
+
+  Mobile Number :  {{mobile_number}}
+
+  Email :  {{email}}
+
+  Message :  {{message}}
