@@ -37,11 +37,13 @@ class ResponseRenderer(JSONRenderer):
             elif data and isinstance(data, str):
                 response["data"] = data
                 response["message"] = data
+            elif isinstance(data, dict):
+                # Pop `detail` so it becomes the message but doesn't appear in data
+                data_copy = dict(data)
+                response["message"] = data_copy.pop("detail", "")
+                response["data"] = data_copy
             else:
                 response["data"] = data
-                response["message"] = (
-                    data.get("detail", "") if isinstance(data, dict) else ""
-                )
 
         return super(ResponseRenderer, self).render(
             response, accepted_media_type, renderer_context

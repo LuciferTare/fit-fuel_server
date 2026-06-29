@@ -1,6 +1,7 @@
-import django.contrib.auth.models
-import django.contrib.auth.validators
-import django.utils.timezone
+import uuid
+
+import django.db.models.deletion
+from django.conf import settings
 from django.db import migrations, models
 
 
@@ -17,12 +18,12 @@ class Migration(migrations.Migration):
             name="CustomUser",
             fields=[
                 (
-                    "id",
-                    models.BigAutoField(
-                        auto_created=True,
+                    "uuid",
+                    models.UUIDField(
+                        default=uuid.uuid4,
+                        editable=False,
                         primary_key=True,
                         serialize=False,
-                        verbose_name="ID",
                     ),
                 ),
                 ("password", models.CharField(max_length=128, verbose_name="password")),
@@ -40,59 +41,109 @@ class Migration(migrations.Migration):
                         verbose_name="superuser status",
                     ),
                 ),
+                ("phone_number", models.CharField(max_length=15, unique=True)),
+                ("first_name", models.CharField(blank=True, max_length=150)),
+                ("last_name", models.CharField(blank=True, max_length=150)),
+                ("date_of_birth", models.DateField(blank=True, null=True)),
                 (
-                    "username",
+                    "gender",
                     models.CharField(
-                        error_messages={
-                            "unique": "A user with that username already exists."
-                        },
-                        help_text="Required. 150 characters or fewer. Letters, digits and @/./+/-/_ only.",
-                        max_length=150,
-                        unique=True,
-                        validators=[
-                            django.contrib.auth.validators.UnicodeUsernameValidator()
+                        blank=True,
+                        choices=[
+                            ("MALE", "Male"),
+                            ("FEMALE", "Female"),
+                            ("OTHER", "Other"),
                         ],
-                        verbose_name="username",
+                        max_length=10,
                     ),
                 ),
                 (
-                    "first_name",
+                    "profile_picture",
+                    models.ImageField(
+                        blank=True, null=True, upload_to="profile_pictures/"
+                    ),
+                ),
+                (
+                    "user_type",
                     models.CharField(
-                        blank=True, max_length=150, verbose_name="first name"
+                        choices=[
+                            ("ADMIN", "Admin"),
+                            ("GYM_OWNER", "Gym Owner"),
+                            ("TRAINER", "Trainer"),
+                            ("MEMBER", "Member"),
+                        ],
+                        db_index=True,
+                        default="MEMBER",
+                        max_length=20,
                     ),
                 ),
                 (
-                    "last_name",
+                    "status",
                     models.CharField(
-                        blank=True, max_length=150, verbose_name="last name"
+                        choices=[
+                            ("ACTIVE", "Active"),
+                            ("DISABLED", "Disabled"),
+                            ("SUSPENDED", "Suspended"),
+                            ("DELETED", "Deleted"),
+                        ],
+                        db_index=True,
+                        default="ACTIVE",
+                        max_length=20,
+                    ),
+                ),
+                ("is_staff", models.BooleanField(default=False)),
+                ("is_active", models.BooleanField(default=True)),
+                (
+                    "created_at",
+                    models.DateTimeField(auto_now_add=True, db_index=True),
+                ),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                ("is_deleted", models.BooleanField(db_index=True, default=False)),
+                ("deleted_at", models.DateTimeField(blank=True, null=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="created_users",
+                        to=settings.AUTH_USER_MODEL,
                     ),
                 ),
                 (
-                    "is_staff",
-                    models.BooleanField(
-                        default=False,
-                        help_text="Designates whether the user can log into this admin site.",
-                        verbose_name="staff status",
+                    "updated_by",
+                    models.ForeignKey(
+                        blank=True,
+                        editable=False,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="updated_users",
+                        to=settings.AUTH_USER_MODEL,
                     ),
                 ),
                 (
-                    "is_active",
-                    models.BooleanField(
-                        default=True,
-                        help_text="Designates whether this user should be treated as active. Unselect this instead of deleting accounts.",
-                        verbose_name="active",
+                    "gym",
+                    models.ForeignKey(
+                        blank=True,
+                        limit_choices_to={"user_type": "GYM_OWNER"},
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="gym_users",
+                        to=settings.AUTH_USER_MODEL,
                     ),
                 ),
                 (
-                    "date_joined",
-                    models.DateTimeField(
-                        default=django.utils.timezone.now, verbose_name="date joined"
+                    "trainer",
+                    models.ForeignKey(
+                        blank=True,
+                        limit_choices_to={"user_type": "TRAINER"},
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="trainer_members",
+                        to=settings.AUTH_USER_MODEL,
                     ),
                 ),
-                ("email", models.EmailField(max_length=254, unique=True)),
-                ("photo", models.CharField(blank=True, max_length=128, null=True)),
-                ("phone", models.CharField(blank=True, max_length=10, null=True)),
-                ("is_email_verified", models.BooleanField(default=False)),
                 (
                     "groups",
                     models.ManyToManyField(
@@ -117,12 +168,9 @@ class Migration(migrations.Migration):
                 ),
             ],
             options={
-                "verbose_name": "user",
-                "verbose_name_plural": "users",
-                "abstract": False,
+                "verbose_name": "User",
+                "verbose_name_plural": "Users",
+                "db_table": "users",
             },
-            managers=[
-                ("objects", django.contrib.auth.models.UserManager()),
-            ],
         ),
     ]

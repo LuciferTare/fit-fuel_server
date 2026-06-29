@@ -7,8 +7,23 @@ from django.views.static import serve
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/", include("accounts.urls")),
+
+    # Auth endpoints: /auth/login/, /auth/logout/, /auth/me/, etc.
+    path("auth/", include("accounts.urls")),
+
+    # Gym Owner user management: /users/trainers/, /users/members/
+    path("users/", include("accounts.urls_users")),
+
+    # Trainer panel: /trainer/members/
+    path("trainer/", include("accounts.urls_trainer")),
+
+    # Member panel: /member/profile/
+    path("member/", include("accounts.urls_member")),
+
+    # Utility endpoints: /api/health/, /api/ping/, /api/my-ip/
     path("api/", include("core.urls")),
+
+    # API docs
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path(
         "docs/",

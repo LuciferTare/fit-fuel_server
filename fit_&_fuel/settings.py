@@ -50,6 +50,8 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.FormParser",
         "rest_framework.parsers.MultiPartParser",
     ],
+    "DEFAULT_PAGINATION_CLASS": "core.pagination.CustomPagination",
+    "PAGE_SIZE": 20,
 }
 
 MIDDLEWARE = [
@@ -67,13 +69,14 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=int(os.environ.get("ACCESS_TOKEN_TIME", 1440))
     ),
+    # Refresh token: 30 days = 43200 minutes
     "REFRESH_TOKEN_LIFETIME": timedelta(
-        minutes=int(os.environ.get("REFRESH_TOKEN_TIME", 10080))
+        minutes=int(os.environ.get("REFRESH_TOKEN_TIME", 43200))
     ),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
-    "UPDATE_LAST_LOGIN": False,
-    "TOKEN_OBTAIN_SERIALIZER": "rest_framework_simplejwt.serializers.TokenObtainPairSerializer",
+    "UPDATE_LAST_LOGIN": True,
+    "TOKEN_OBTAIN_SERIALIZER": "accounts.serializers.LoginSerializer",
     "ALGORITHM": "HS256",
     "SIGNING_KEY": os.environ.get("JWT_SECRET_KEY"),
     "VERIFYING_KEY": None,
@@ -81,7 +84,7 @@ SIMPLE_JWT = {
     "ISSUER": None,
     "AUTH_HEADER_TYPES": ("Bearer",),
     "AUTH_HEADER_NAME": "HTTP_AUTHORIZATION",
-    "USER_ID_FIELD": "id",
+    "USER_ID_FIELD": "uuid",
     "USER_ID_CLAIM": "user_id",
     "USER_AUTHENTICATION_RULE": "rest_framework_simplejwt.authentication.default_user_authentication_rule",
     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
@@ -92,7 +95,7 @@ SIMPLE_JWT = {
         minutes=int(os.environ.get("ACCESS_TOKEN_TIME", 1440))
     ),
     "SLIDING_TOKEN_REFRESH_LIFETIME": timedelta(
-        minutes=int(os.environ.get("REFRESH_TOKEN_TIME", 10080))
+        minutes=int(os.environ.get("REFRESH_TOKEN_TIME", 43200))
     ),
 }
 
@@ -155,7 +158,7 @@ LOGGING = {
     },
 }
 
-ROOT_URLCONF = "django_starter.urls"
+ROOT_URLCONF = "fit_&_fuel.urls"
 
 TEMPLATES = [
     {
@@ -173,7 +176,7 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = "django_starter.wsgi.application"
+WSGI_APPLICATION = "fit_&_fuel.wsgi.application"
 
 DATABASES = {
     "default": {
@@ -192,16 +195,7 @@ DATABASES = {
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.CommonPasswordValidator",
-    },
-    {
-        "NAME": "django.contrib.auth.password_validation.NumericPasswordValidator",
+        "NAME": "accounts.validators.StrongPasswordValidator",
     },
 ]
 
