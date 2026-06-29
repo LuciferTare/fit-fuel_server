@@ -6,6 +6,7 @@ from django.db import models
 from django.utils import timezone
 
 from accounts.managers import ActiveUserManager, UserManager
+from core.models import BaseModel
 
 
 class UserType(models.TextChoices):
@@ -48,6 +49,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     user_type = models.CharField(
         max_length=20, choices=UserType.choices, default=UserType.MEMBER, db_index=True
     )
+    trainer_limit = models.IntegerField(default=0)
     status = models.CharField(
         max_length=20,
         choices=UserStatus.choices,
@@ -72,6 +74,17 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         related_name="trainer_members",
         limit_choices_to={"user_type": UserType.TRAINER},
     )
+
+    # Membership tracking (denormalised for fast reads / reports)
+    membership_start = models.DateField(null=True, blank=True)
+    membership_end = models.DateField(null=True, blank=True, db_index=True)
+    membership_status = models.CharField(
+        max_length=10,
+        choices=[("ACTIVE", "Active"), ("EXPIRED", "Expired")],
+        null=True,
+        blank=True,
+    )
+    membership_plan = models.CharField(max_length=100, null=True, blank=True)
 
     # Django flags
     is_staff = models.BooleanField(default=False)
@@ -109,6 +122,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         verbose_name = "User"
         verbose_name_plural = "Users"
         db_table = "users"
+        indexes = [
+            models.Index(fields=["gym", "user_type"], name="user_gym_type_idx"),
+        ]
 
     def __str__(self):
         return f"{self.get_full_name()} ({self.phone_number})"
@@ -171,3 +187,68 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                     raise ValidationError(
                         "Trainer must belong to the same gym as the member."
                     )
+
+
+# ── Membership & Payment enums ─────────────────────────────────────────────────
+
+class MembershipStatus(models.TextChoices):
+    ACTIVE = "ACTIVE", "Active"
+    EXPIRED = "EXPIRED", "Expired"
+
+
+class PaymentMode(models.TextChoices):
+    CASH = "CASH", "Cash"
+    ONLINE = "ONLINE", "Online"
+
+
+# ── Membership model ───────────────────────────────────────────────────────────
+
+class Membership(BaseModel):
+    member = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+        limit_choices_to={"user_type": UserType.MEMBER},
+    )
+    start_date = models.DateField()
+    end_date = models.DateField()
+    plan = models.CharField(max_length=100, blank=True)
+    amount_paid = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_mode = models.CharField(max_length=10, choices=PaymentMode.choices)
+    status = models.CharField(
+        max_length=10,
+        choices=MembershipStatus.choices,
+        default=MembershipStatus.ACTIVE,
+        db_index=True,
+    )
+
+    class Meta:
+        verbose_name = "Membership"
+        verbose_name_plural = "Memberships"
+        db_table = "memberships"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.member} — {self.plan or 'Custom'} ({self.start_date} to {self.end_date})"
+
+
+# ── Payment model ──────────────────────────────────────────────────────────────
+
+class Payment(BaseModel):
+    membership = models.ForeignKey(
+        Membership,
+        on_delete=models.CASCADE,
+        related_name="payments",
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    mode = models.CharField(max_length=10, choices=PaymentMode.choices)
+    paid_on = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        verbose_name = "Payment"
+        verbose_name_plural = "Payments"
+        db_table = "payments"
+        ordering = ["-paid_on"]
+
+    def __str__(self):
+        return f"Payment {self.uuid} — {self.amount} ({self.mode})"

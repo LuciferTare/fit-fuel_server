@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.utils.html import format_html
 
-from accounts.models import CustomUser
+from accounts.models import CustomUser, Membership, Payment
 
 
 class CustomUserCreationForm(forms.ModelForm):
@@ -160,3 +160,21 @@ class CustomUserAdmin(admin.ModelAdmin):
         return "No photo"
 
     profile_picture_preview.short_description = "Photo Preview"
+
+
+@admin.register(Membership)
+class MembershipAdmin(admin.ModelAdmin):
+    list_display = ["uuid", "member", "plan", "start_date", "end_date", "amount_paid", "payment_mode", "status", "created_at"]
+    list_filter = ["status", "payment_mode"]
+    search_fields = ["member__phone_number", "member__first_name", "member__last_name", "plan"]
+    ordering = ["-created_at"]
+    readonly_fields = ["uuid", "created_at", "updated_at", "created_by", "updated_by", "deleted_at"]
+
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ["uuid", "membership", "amount", "mode", "paid_on", "created_at"]
+    list_filter = ["mode"]
+    search_fields = ["membership__member__phone_number", "membership__member__first_name"]
+    ordering = ["-paid_on"]
+    readonly_fields = ["uuid", "created_at", "updated_at", "created_by", "updated_by", "deleted_at"]

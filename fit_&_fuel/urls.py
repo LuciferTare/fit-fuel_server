@@ -20,8 +20,17 @@ urlpatterns = [
     # Member panel: /member/profile/
     path("member/", include("accounts.urls_member")),
 
-    # Utility endpoints: /api/health/, /api/ping/, /api/my-ip/
-    path("api/", include("core.urls")),
+    # Membership & Payment endpoints: /memberships/, /payments/
+    path("", include("accounts.urls_memberships")),
+
+    # Utility + Phase-3 API endpoints
+    path("api/", include([
+        path("", include("core.urls")),
+        path("attendance/", include("attendance.urls")),
+        path("reports/", include("reports.urls")),
+        path("backup/", include("backup.urls")),
+        path("payments/", include("accounts.urls_member_payments")),
+    ])),
 
     # API docs
     path("schema/", SpectacularAPIView.as_view(), name="schema"),

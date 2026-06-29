@@ -30,6 +30,9 @@ INSTALLED_APPS = [
     "drf_spectacular",
     "accounts",
     "core",
+    "attendance",
+    "reports",
+    "backup",
 ]
 
 SPECTACULAR_SETTINGS = {

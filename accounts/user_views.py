@@ -2,22 +2,27 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
-from accounts.models import CustomUser, UserStatus, UserType
+from accounts.models import CustomUser, Membership, MembershipStatus, Payment, UserStatus, UserType
 from accounts.serializers import (
     AssignTrainerSerializer,
     GymOwnerCreateSerializer,
     GymOwnerDetailSerializer,
     MemberCreateSerializer,
     MemberDetailSerializer,
+    MemberPaymentResponseSerializer,
+    MemberPaymentSerializer,
     MemberProfileSerializer,
+    MembershipSerializer,
+    PaymentSerializer,
     TrainerCreateSerializer,
     TrainerDetailSerializer,
 )
 from core.exceptions import ConflictException
 from core.pagination import CustomPagination
-from core.permissions import IsAdmin, IsGymOwner, IsMember, IsTrainer
+from core.permissions import IsAdmin, IsAdminOrGymOwner, IsGymOwner, IsMember, IsTrainer
 from core.views import BaseModelViewSet, BaseAPIView
 
 
@@ -100,6 +105,18 @@ class TrainerViewSet(BaseModelViewSet):
         phone = request.data.get("phone_number")
         if phone and CustomUser.objects.filter(phone_number=phone).exists():
             raise ConflictException("This phone number is already registered.")
+
+        gym_owner = request.user
+        if gym_owner.trainer_limit > 0:
+            current_count = CustomUser.active_objects.filter(
+                user_type=UserType.TRAINER,
+                gym=gym_owner,
+            ).count()
+            if current_count >= gym_owner.trainer_limit:
+                raise DRFValidationError(
+                    {"trainer_limit": f"Trainer limit of {gym_owner.trainer_limit} has been reached."}
+                )
+
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -248,3 +265,143 @@ class MemberProfileView(BaseAPIView):
             serializer.save(updated_by=request.user)
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ── Gym Owner: Membership Management ─────────────────────────────────────────
+
+@extend_schema(tags=["Memberships"])
+class MembershipViewSet(BaseModelViewSet):
+    permission_classes = [IsAdminOrGymOwner]
+    pagination_class = CustomPagination
+    serializer_class = MembershipSerializer
+    queryset = Membership.objects.none()
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["status", "member", "payment_mode"]
+    ordering_fields = ["start_date", "end_date", "created_at"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == UserType.ADMIN:
+            return Membership.active_objects.all()
+        return Membership.active_objects.filter(member__gym=user)
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.soft_delete(deleted_by=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Gym Owner: Payment Management ────────────────────────────────────────────
+
+@extend_schema(tags=["Payments"])
+class PaymentViewSet(BaseModelViewSet):
+    permission_classes = [IsAdminOrGymOwner]
+    pagination_class = CustomPagination
+    serializer_class = PaymentSerializer
+    queryset = Payment.objects.none()
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = ["mode", "membership"]
+    ordering_fields = ["paid_on", "created_at"]
+    ordering = ["-paid_on"]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type == UserType.ADMIN:
+            qs = Payment.active_objects.all()
+        else:
+            qs = Payment.active_objects.filter(membership__member__gym=user)
+        member_uuid = self.request.query_params.get("member")
+        if member_uuid:
+            qs = qs.filter(membership__member__uuid=member_uuid)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.soft_delete(deleted_by=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Phase-3: Member-centric payment entry point ───────────────────────────────
+
+@extend_schema(tags=["Member Payments"])
+class MemberPaymentView(BaseAPIView):
+    """POST /api/payments/ — record a membership payment and update member's membership dates.
+    GET  /api/payments/?member_id= — list membership records for a member.
+    """
+
+    permission_classes = [IsAdminOrGymOwner]
+
+    @extend_schema(request=MemberPaymentSerializer, responses=MemberPaymentResponseSerializer)
+    def post(self, request):
+        serializer = MemberPaymentSerializer(data=request.data, context={"request": request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+        member_id = data["member_id"]
+
+        qs = CustomUser.active_objects.filter(uuid=member_id, user_type=UserType.MEMBER)
+        if request.user.user_type == UserType.GYM_OWNER:
+            qs = qs.filter(gym=request.user)
+        try:
+            member = qs.get()
+        except CustomUser.DoesNotExist:
+            return Response({"detail": "Member not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        mode_map = {"Cash": "CASH", "Online": "ONLINE"}
+        membership = Membership.objects.create(
+            member=member,
+            start_date=data["start_date"],
+            end_date=data["end_date"],
+            amount_paid=data["amount"],
+            payment_mode=mode_map[data["mode"]],
+            plan=data.get("plan", ""),
+            status=MembershipStatus.ACTIVE,
+            created_by=request.user,
+            updated_by=request.user,
+        )
+
+        member.membership_start = data["start_date"]
+        member.membership_end = data["end_date"]
+        member.membership_status = MembershipStatus.ACTIVE
+        member.membership_plan = data.get("plan", "")
+        member.updated_by = request.user
+        member.save(
+            update_fields=[
+                "membership_start", "membership_end",
+                "membership_status", "membership_plan",
+                "updated_by", "updated_at",
+            ]
+        )
+
+        return Response(
+            MemberPaymentResponseSerializer(membership).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(responses=MembershipSerializer)
+    def get(self, request):
+        """List memberships filtered by member_id query param."""
+        if request.user.user_type == UserType.ADMIN:
+            qs = Membership.active_objects.all()
+        else:
+            qs = Membership.active_objects.filter(member__gym=request.user)
+
+        member_id = request.query_params.get("member_id")
+        if member_id:
+            qs = qs.filter(member__uuid=member_id)
+
+        return Response(MembershipSerializer(qs, many=True).data)

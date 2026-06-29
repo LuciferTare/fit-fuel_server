@@ -5,7 +5,16 @@ from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import AuthenticationFailed as JWTAuthFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from accounts.models import CustomUser, GenderChoice, UserStatus, UserType
+from accounts.models import (
+    CustomUser,
+    GenderChoice,
+    Membership,
+    MembershipStatus,
+    Payment,
+    PaymentMode,
+    UserStatus,
+    UserType,
+)
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -244,6 +253,7 @@ class TrainerCreateSerializer(serializers.ModelSerializer):
 class TrainerDetailSerializer(serializers.ModelSerializer):
     gym_id = serializers.UUIDField(read_only=True)
     age = serializers.IntegerField(read_only=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=False)
 
     class Meta:
         model = CustomUser
@@ -259,13 +269,20 @@ class TrainerDetailSerializer(serializers.ModelSerializer):
             "user_type",
             "status",
             "gym_id",
+            "password",
             "created_at",
         ]
         read_only_fields = ["uuid", "phone_number", "user_type", "gym_id", "created_at"]
 
+    def validate_password(self, value):
+        return _validate_password_strength(value)
+
     def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if password:
+            instance.set_password(password)
         _run_model_validation(instance)
         instance.save()
         return instance
@@ -329,8 +346,9 @@ class MemberCreateSerializer(serializers.ModelSerializer):
 
 class MemberDetailSerializer(serializers.ModelSerializer):
     gym_id = serializers.UUIDField(read_only=True)
-    trainer_id = serializers.UUIDField(read_only=True)
+    trainer_id = serializers.UUIDField(allow_null=True, required=False)
     age = serializers.IntegerField(read_only=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=False)
 
     class Meta:
         model = CustomUser
@@ -347,13 +365,36 @@ class MemberDetailSerializer(serializers.ModelSerializer):
             "status",
             "gym_id",
             "trainer_id",
+            "password",
             "created_at",
         ]
         read_only_fields = ["uuid", "phone_number", "user_type", "gym_id", "created_at"]
 
+    def validate_trainer_id(self, value):
+        if value is None:
+            return value
+        request = self.context.get("request")
+        filters = {"uuid": value, "user_type": UserType.TRAINER}
+        if request and request.user.user_type == UserType.GYM_OWNER:
+            filters["gym"] = request.user
+        try:
+            CustomUser.active_objects.get(**filters)
+        except CustomUser.DoesNotExist:
+            raise serializers.ValidationError("Trainer not found in this gym.")
+        return value
+
+    def validate_password(self, value):
+        return _validate_password_strength(value)
+
     def update(self, instance, validated_data):
+        password = validated_data.pop("password", None)
+        trainer_id = validated_data.pop("trainer_id", ...)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        if trainer_id is not ...:
+            instance.trainer_id = trainer_id
+        if password:
+            instance.set_password(password)
         _run_model_validation(instance)
         instance.save()
         return instance
@@ -381,3 +422,121 @@ class MemberProfileSerializer(serializers.ModelSerializer):
 
 class AssignTrainerSerializer(serializers.Serializer):
     trainer_uuid = serializers.UUIDField()
+
+
+# ── Membership serializers ────────────────────────────────────────────────────
+
+class MembershipSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Membership
+        fields = [
+            "uuid",
+            "member",
+            "start_date",
+            "end_date",
+            "plan",
+            "amount_paid",
+            "payment_mode",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["uuid", "status", "created_at", "updated_at"]
+
+    def validate_member(self, value):
+        if value.user_type != UserType.MEMBER:
+            raise serializers.ValidationError("User must be of type MEMBER.")
+        return value
+
+    def validate(self, attrs):
+        start_date = attrs.get("start_date") or getattr(self.instance, "start_date", None)
+        end_date = attrs.get("end_date") or getattr(self.instance, "end_date", None)
+        if start_date and end_date and start_date > end_date:
+            raise serializers.ValidationError(
+                {"end_date": "end_date must be on or after start_date."}
+            )
+
+        # Check for overlapping active memberships (create only)
+        if self.instance is None:
+            member = attrs.get("member")
+            if member and start_date and end_date:
+                overlapping = Membership.active_objects.filter(
+                    member=member,
+                    status=MembershipStatus.ACTIVE,
+                    start_date__lte=end_date,
+                    end_date__gte=start_date,
+                )
+                if overlapping.exists():
+                    raise serializers.ValidationError(
+                        "An active membership already exists overlapping this date range."
+                    )
+
+        return attrs
+
+    def create(self, validated_data):
+        validated_data.setdefault("status", MembershipStatus.ACTIVE)
+        return super().create(validated_data)
+
+
+# ── Payment serializers ───────────────────────────────────────────────────────
+
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = [
+            "uuid",
+            "membership",
+            "amount",
+            "mode",
+            "paid_on",
+            "created_at",
+        ]
+        read_only_fields = ["uuid", "created_at"]
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("Amount must be greater than zero.")
+        return value
+
+    def validate_membership(self, value):
+        request = self.context.get("request")
+        if request and request.user.user_type == UserType.GYM_OWNER:
+            if value.member.gym != request.user:
+                raise serializers.ValidationError(
+                    "Membership does not belong to your gym."
+                )
+        return value
+
+
+# ── Phase-3 payment (member-centric) serializers ──────────────────────────────
+
+class MemberPaymentSerializer(serializers.Serializer):
+    """Input for POST /api/payments/ — records payment and updates member membership dates."""
+
+    member_id = serializers.UUIDField()
+    date = serializers.DateField()
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
+    mode = serializers.ChoiceField(choices=["Cash", "Online"])
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    plan = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        if attrs["start_date"] > attrs["end_date"]:
+            raise serializers.ValidationError({"end_date": "end_date must be on or after start_date."})
+        return attrs
+
+
+class MemberPaymentResponseSerializer(serializers.Serializer):
+    """Read-only shape returned after recording a Phase-3 payment."""
+
+    uuid = serializers.UUIDField()
+    member_id = serializers.UUIDField(source="member.uuid")
+    amount = serializers.DecimalField(max_digits=10, decimal_places=2)
+    amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2)
+    date = serializers.DateField(source="start_date")
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    mode = serializers.CharField(source="payment_mode")
+    plan = serializers.CharField()
+    status = serializers.CharField()
