@@ -82,7 +82,7 @@ fit&fuel_server/
 │   ├── pagination.py            # CustomPagination (page/page_size, max 100)
 │   ├── renderers.py             # ResponseRenderer — unified JSON envelope
 │   ├── exceptions.py            # ConflictException (HTTP 409)
-│   ├── views.py                 # BaseAPIView, BaseModelViewSet, ping, health_check, my_ip
+│   ├── views.py                 # BaseAPIView, BaseModelViewSet, health_check, my_ip
 │   └── urls.py                  # /api/ utility endpoints
 │
 ├── static/geo_lite2/            # GeoLite2-City.mmdb (GeoIP database)
@@ -508,7 +508,6 @@ Read-only. Only returns Members assigned to the requesting Trainer.
 | Method | Path           | Auth Required | Description                                                 |
 | ------ | -------------- | ------------- | ----------------------------------------------------------- |
 | HEAD   | `/api/health/` | No            | Health check — returns HTTP 200                             |
-| GET    | `/api/ping/`   | No            | Returns `"pong"`                                            |
 | GET    | `/api/my-ip/`  | No            | Returns client IP, GeoIP location, browser, OS, device info |
 
 ---

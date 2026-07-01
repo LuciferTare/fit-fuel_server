@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.utils.html import format_html
 
-from accounts.models import CustomUser, Membership, Payment
+from accounts.models import CustomUser, Gym, Membership, Payment
 
 
 class CustomUserCreationForm(forms.ModelForm):
@@ -59,6 +59,7 @@ class CustomUserAdmin(admin.ModelAdmin):
         "user_type",
         "status",
         "gym",
+        "gym_details",
         "trainer",
         "is_active",
         "created_at",
@@ -94,7 +95,7 @@ class CustomUserAdmin(admin.ModelAdmin):
                 )
             },
         ),
-        ("Business", {"fields": ("user_type", "status", "gym", "trainer")}),
+        ("Business", {"fields": ("user_type", "status", "gym", "gym_details", "trainer")}),
         (
             "Permissions",
             {
@@ -137,6 +138,7 @@ class CustomUserAdmin(admin.ModelAdmin):
                     "user_type",
                     "status",
                     "gym",
+                    "gym_details",
                     "trainer",
                 ),
             },
@@ -160,6 +162,14 @@ class CustomUserAdmin(admin.ModelAdmin):
         return "No photo"
 
     profile_picture_preview.short_description = "Photo Preview"
+
+
+@admin.register(Gym)
+class GymAdmin(admin.ModelAdmin):
+    list_display = ["uuid", "name", "created_at"]
+    search_fields = ["name"]
+    ordering = ["-created_at"]
+    readonly_fields = ["uuid", "created_at", "updated_at", "created_by", "updated_by", "deleted_at"]
 
 
 @admin.register(Membership)

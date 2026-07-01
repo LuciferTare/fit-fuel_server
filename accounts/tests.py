@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.test import TestCase
 from django.urls import reverse
 from rest_framework import status
@@ -5,6 +7,7 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import CustomUser, UserStatus, UserType
+from accounts.utils import calculate_membership_end
 
 
 def make_user(phone, password, user_type=UserType.MEMBER, status_=UserStatus.ACTIVE, **kwargs):
@@ -136,12 +139,35 @@ class AdminTests(TestCase):
                 "first_name": "Gym",
                 "last_name": "Owner",
                 "gender": "MALE",
+                "gym_name": "Iron Paradise",
+                "membership": "Monthly",
             },
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         owner = CustomUser.objects.get(phone_number="9000000050")
         self.assertEqual(owner.user_type, UserType.GYM_OWNER)
+        self.assertEqual(owner.gym_details.name, "Iron Paradise")
+        today = date.today()
+        self.assertEqual(owner.membership_start, today)
+        self.assertEqual(owner.membership_end, calculate_membership_end(today, "Monthly"))
+        self.assertEqual(owner.membership_plan, "Monthly")
+
+    def test_admin_creates_gym_owner_missing_gym_fields(self):
+        res = self.client.post(
+            reverse("gym-owner-list"),
+            {
+                "phone_number": "9000000055",
+                "password": "Owner@1234",
+                "first_name": "Gym",
+                "last_name": "Owner",
+                "gender": "MALE",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("gym_name", res.json()["data"])
+        self.assertIn("membership", res.json()["data"])
 
     def test_gym_owner_cannot_create_gym_owner(self):
         gym_owner = make_user("9000000002", "Owner@1234", user_type=UserType.GYM_OWNER)
@@ -220,7 +246,7 @@ class TrainerManagementTests(TestCase):
         trainer = make_user(
             "9000000110", "T@1234", user_type=UserType.TRAINER, gym=self.gym_owner
         )
-        res = self.client.patch(
+        res = self.client.post(
             reverse("trainer-disable", kwargs={"pk": str(trainer.uuid)})
         )
         self.assertEqual(res.status_code, status.HTTP_200_OK)
@@ -231,8 +257,8 @@ class TrainerManagementTests(TestCase):
         trainer = make_user(
             "9000000120", "T@1234", user_type=UserType.TRAINER, gym=self.gym_owner
         )
-        res = self.client.patch(
-            reverse("trainer-detail", kwargs={"pk": str(trainer.uuid)}),
+        res = self.client.post(
+            reverse("trainer-update", kwargs={"pk": str(trainer.uuid)}),
             {"first_name": "UpdatedName"},
             format="json",
         )
@@ -302,7 +328,7 @@ class MemberManagementTests(TestCase):
         member = make_user(
             "9000000201", "M@1234", user_type=UserType.MEMBER, gym=self.gym_owner
         )
-        res = self.client.patch(
+        res = self.client.post(
             reverse("member-assign-trainer", kwargs={"pk": str(member.uuid)}),
             {"trainer_uuid": str(self.trainer.uuid)},
             format="json",
@@ -330,7 +356,7 @@ class MemberManagementTests(TestCase):
         member = make_user(
             "9000000210", "M@1234", user_type=UserType.MEMBER, gym=self.gym_owner
         )
-        res = self.client.patch(
+        res = self.client.post(
             reverse("member-disable", kwargs={"pk": str(member.uuid)})
         )
         self.assertEqual(res.status_code, status.HTTP_200_OK)
@@ -341,8 +367,8 @@ class MemberManagementTests(TestCase):
         member = make_user(
             "9000000220", "M@1234", user_type=UserType.MEMBER, gym=self.gym_owner
         )
-        res = self.client.patch(
-            reverse("member-detail", kwargs={"pk": str(member.uuid)}),
+        res = self.client.post(
+            reverse("member-update", kwargs={"pk": str(member.uuid)}),
             {"first_name": "UpdatedMember"},
             format="json",
         )
@@ -370,7 +396,7 @@ class MemberManagementTests(TestCase):
         member = make_user(
             "9000000202", "M@1234", user_type=UserType.MEMBER, gym=self.gym_owner
         )
-        res = self.client.patch(
+        res = self.client.post(
             reverse("member-assign-trainer", kwargs={"pk": str(member.uuid)}),
             {"trainer_uuid": str(other_trainer.uuid)},
             format="json",
@@ -419,7 +445,7 @@ class MemberProfileTests(TestCase):
         self.assertEqual(res.json()["data"]["phone_number"], self.member.phone_number)
 
     def test_member_can_update_name(self):
-        res = self.client.patch(
+        res = self.client.post(
             reverse("member-profile"), {"first_name": "Updated"}, format="json"
         )
         self.assertEqual(res.status_code, status.HTTP_200_OK)

@@ -162,7 +162,6 @@ Copy `.env.example` to `.env` and fill in all values:
 | Method | Endpoint | Auth | Description |
 |---|---|---|---|
 | `HEAD` | `/api/health/` | No | Health check (returns 200) |
-| `GET` | `/api/ping/` | No | Ping — returns `"pong"` |
 | `GET` | `/api/my-ip/` | No | Client IP + location + device info |
 
 ### Documentation

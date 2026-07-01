@@ -68,7 +68,7 @@ class GymOwnerViewSet(BaseModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(summary="Disable Gym Owner")
-    @action(detail=True, methods=["patch"], url_path="disable")
+    @action(detail=True, methods=["post"], url_path="disable")
     def disable(self, request, pk=None):
         owner = self.get_object()
         owner.status = UserStatus.DISABLED
@@ -135,7 +135,7 @@ class TrainerViewSet(BaseModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(summary="Disable Trainer")
-    @action(detail=True, methods=["patch"], url_path="disable")
+    @action(detail=True, methods=["post"], url_path="disable")
     def disable(self, request, pk=None):
         trainer = self.get_object()
         trainer.status = UserStatus.DISABLED
@@ -190,7 +190,7 @@ class MemberViewSet(BaseModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(summary="Disable Member")
-    @action(detail=True, methods=["patch"], url_path="disable")
+    @action(detail=True, methods=["post"], url_path="disable")
     def disable(self, request, pk=None):
         member = self.get_object()
         member.status = UserStatus.DISABLED
@@ -199,7 +199,7 @@ class MemberViewSet(BaseModelViewSet):
         return Response(MemberDetailSerializer(member).data)
 
     @extend_schema(summary="Assign Trainer to Member")
-    @action(detail=True, methods=["patch"], url_path="assign-trainer")
+    @action(detail=True, methods=["post"], url_path="assign-trainer")
     def assign_trainer(self, request, pk=None):
         member = self.get_object()
         serializer = AssignTrainerSerializer(data=request.data)
@@ -257,7 +257,7 @@ class MemberProfileView(BaseAPIView):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
-    def patch(self, request):
+    def post(self, request):
         serializer = self.get_serializer(
             request.user, data=request.data, partial=True
         )

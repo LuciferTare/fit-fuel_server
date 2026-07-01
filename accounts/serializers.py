@@ -1,6 +1,8 @@
 import re
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.exceptions import AuthenticationFailed as JWTAuthFailed
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -8,6 +10,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from accounts.models import (
     CustomUser,
     GenderChoice,
+    Gym,
     Membership,
     MembershipStatus,
     Payment,
@@ -15,6 +18,7 @@ from accounts.models import (
     UserStatus,
     UserType,
 )
+from accounts.utils import MEMBERSHIP_DURATION_MONTHS, calculate_membership_end
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -155,10 +159,15 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=True)
     gender = serializers.ChoiceField(choices=GenderChoice.choices, required=True)
+    gym_name = serializers.CharField(write_only=True, max_length=255)
+    membership = serializers.ChoiceField(
+        choices=list(MEMBERSHIP_DURATION_MONTHS.keys()), write_only=True
+    )
 
     class Meta:
         model = CustomUser
         fields = [
+            "uuid",
             "phone_number",
             "password",
             "first_name",
@@ -166,7 +175,12 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
             "date_of_birth",
             "gender",
             "profile_picture",
+            "gym_name",
+            "membership",
+            "status",
+            "created_at",
         ]
+        read_only_fields = ["uuid", "status", "created_at"]
 
     def validate_phone_number(self, value):
         if CustomUser.objects.filter(phone_number=value).exists():
@@ -178,15 +192,33 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        user = CustomUser(**validated_data)
-        user.set_password(password)
-        _run_model_validation(user)
-        user.save()
+        gym_name = validated_data.pop("gym_name")
+        membership = validated_data.pop("membership")
+        created_by = validated_data.get("created_by")
+
+        with transaction.atomic():
+            gym = Gym.objects.create(
+                name=gym_name, created_by=created_by, updated_by=created_by
+            )
+
+            start_date = timezone.now().date()
+            user = CustomUser(
+                **validated_data,
+                gym_details=gym,
+                membership_start=start_date,
+                membership_end=calculate_membership_end(start_date, membership),
+                membership_status=MembershipStatus.ACTIVE,
+                membership_plan=membership,
+            )
+            user.set_password(password)
+            _run_model_validation(user)
+            user.save()
         return user
 
 
 class GymOwnerDetailSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
+    gym_name = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
@@ -201,9 +233,15 @@ class GymOwnerDetailSerializer(serializers.ModelSerializer):
             "profile_picture",
             "user_type",
             "status",
+            "gym_name",
+            "membership_start",
+            "membership_end",
             "created_at",
         ]
         read_only_fields = ["uuid", "phone_number", "user_type", "created_at"]
+
+    def get_gym_name(self, obj):
+        return obj.gym_details.name if obj.gym_details_id else None
 
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():

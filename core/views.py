@@ -7,6 +7,7 @@ from drf_spectacular.utils import extend_schema
 from ipware import get_client_ip
 from rest_framework import status, viewsets
 from rest_framework.decorators import (
+    action,
     api_view,
     authentication_classes,
     permission_classes,
@@ -31,19 +32,16 @@ class BaseAPIView(GenericAPIView):
 
 class BaseModelViewSet(viewsets.ModelViewSet):
     renderer_classes = (renderers.ResponseRenderer,)
+    http_method_names = ["get", "post", "put", "delete", "head", "options"]
+
+    @action(detail=True, methods=["post"], url_path="update", url_name="update")
+    def partial_update_via_post(self, request, *args, **kwargs):
+        return self.partial_update(request, *args, **kwargs)
 
 
 class NoAuthNoPermMixin:
     authentication_classes = []
     permission_classes = []
-
-
-@extend_schema(summary="Ping Server", tags=["Utils"])
-@api_view(["GET"])
-@authentication_classes([])
-@permission_classes([])
-def ping(request: HttpRequest):
-    return Response("pong", status=status.HTTP_200_OK)
 
 
 @require_http_methods(["HEAD"])

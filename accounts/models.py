@@ -29,6 +29,22 @@ class GenderChoice(models.TextChoices):
     OTHER = "OTHER", "Other"
 
 
+# ── Gym master ──────────────────────────────────────────────────────────────────
+
+class Gym(BaseModel):
+    """Master record for a gym's name, referenced by its owner's CustomUser via `gym_details`."""
+
+    name = models.CharField(max_length=255)
+
+    class Meta:
+        verbose_name = "Gym"
+        verbose_name_plural = "Gyms"
+        db_table = "gyms"
+
+    def __str__(self):
+        return self.name
+
+
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     # Primary key
     uuid = models.UUIDField(primary_key=True, default=uuid_lib.uuid4, editable=False)
@@ -73,6 +89,14 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         on_delete=models.SET_NULL,
         related_name="trainer_members",
         limit_choices_to={"user_type": UserType.TRAINER},
+    )
+    # Set only for GYM_OWNER users — points to the master Gym record holding their gym's name.
+    gym_details = models.ForeignKey(
+        Gym,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="owners",
     )
 
     # Membership tracking (denormalised for fast reads / reports)
@@ -170,8 +194,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
     def _validate_relationships(self):
         if self.user_type == UserType.ADMIN:
-            if self.gym_id or self.trainer_id:
-                raise ValidationError("Admin cannot have gym or trainer assignment.")
+            if self.gym_id or self.trainer_id or self.gym_details_id:
+                raise ValidationError("Admin cannot have gym, trainer, or gym-profile assignment.")
         elif self.user_type == UserType.GYM_OWNER:
             if self.trainer_id:
                 raise ValidationError("Gym Owner cannot have a trainer assignment.")
@@ -180,7 +204,11 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         elif self.user_type == UserType.TRAINER:
             if self.trainer_id:
                 raise ValidationError("Trainer cannot reference another trainer.")
+            if self.gym_details_id:
+                raise ValidationError("Trainer cannot have a gym-profile assignment.")
         elif self.user_type == UserType.MEMBER:
+            if self.gym_details_id:
+                raise ValidationError("Member cannot have a gym-profile assignment.")
             if self.trainer_id and self.gym_id:
                 trainer = CustomUser.objects.filter(uuid=self.trainer_id).first()
                 if trainer and trainer.gym_id != self.gym_id:
