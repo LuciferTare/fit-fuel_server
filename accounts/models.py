@@ -10,23 +10,23 @@ from core.models import BaseModel
 
 
 class UserType(models.TextChoices):
-    ADMIN = "ADMIN", "Admin"
-    GYM_OWNER = "GYM_OWNER", "Gym Owner"
-    TRAINER = "TRAINER", "Trainer"
-    MEMBER = "MEMBER", "Member"
+    ADMIN = "admin", "Admin"
+    GYM_OWNER = "gym_owner", "Gym Owner"
+    TRAINER = "trainer", "Trainer"
+    MEMBER = "member", "Member"
 
 
 class UserStatus(models.TextChoices):
-    ACTIVE = "ACTIVE", "Active"
-    DISABLED = "DISABLED", "Disabled"
-    SUSPENDED = "SUSPENDED", "Suspended"
-    DELETED = "DELETED", "Deleted"
+    ACTIVE = "active", "Active"
+    DISABLED = "disabled", "Disabled"
+    SUSPENDED = "suspended", "Suspended"
+    DELETED = "deleted", "Deleted"
 
 
 class GenderChoice(models.TextChoices):
-    MALE = "MALE", "Male"
-    FEMALE = "FEMALE", "Female"
-    OTHER = "OTHER", "Other"
+    MALE = "male", "Male"
+    FEMALE = "female", "Female"
+    OTHER = "other", "Other"
 
 
 # ── Gym master ──────────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     user_type = models.CharField(
         max_length=20, choices=UserType.choices, default=UserType.MEMBER, db_index=True
     )
-    trainer_limit = models.IntegerField(default=0)
+    trainer_limit = models.IntegerField(default=5)
     status = models.CharField(
         max_length=20,
         choices=UserStatus.choices,
@@ -104,7 +104,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     membership_end = models.DateField(null=True, blank=True, db_index=True)
     membership_status = models.CharField(
         max_length=10,
-        choices=[("ACTIVE", "Active"), ("EXPIRED", "Expired")],
+        choices=[("active", "Active"), ("expired", "Expired")],
         null=True,
         blank=True,
     )
@@ -220,13 +220,13 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 # ── Membership & Payment enums ─────────────────────────────────────────────────
 
 class MembershipStatus(models.TextChoices):
-    ACTIVE = "ACTIVE", "Active"
-    EXPIRED = "EXPIRED", "Expired"
+    ACTIVE = "active", "Active"
+    EXPIRED = "expired", "Expired"
 
 
 class PaymentMode(models.TextChoices):
-    CASH = "CASH", "Cash"
-    ONLINE = "ONLINE", "Online"
+    CASH = "cash", "Cash"
+    ONLINE = "online", "Online"
 
 
 # ── Membership model ───────────────────────────────────────────────────────────

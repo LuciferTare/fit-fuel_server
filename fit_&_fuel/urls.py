@@ -11,6 +11,9 @@ urlpatterns = [
     # Auth endpoints: /auth/login/, /auth/logout/, /auth/me/, etc.
     path("auth/", include("accounts.urls")),
 
+    # Gym master data: /gyms/
+    path("gyms/", include("accounts.urls_gyms")),
+
     # Gym Owner user management: /users/trainers/, /users/members/
     path("users/", include("accounts.urls_users")),
 

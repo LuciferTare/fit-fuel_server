@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import CustomUser, UserStatus, UserType
+from accounts.models import CustomUser, Gym, UserStatus, UserType
 from accounts.utils import calculate_membership_end
 
 
@@ -83,12 +83,12 @@ class AuthTests(TestCase):
 
     def test_me_authenticated(self):
         self.client.force_authenticate(user=self.admin)
-        res = self.client.get(reverse("auth-me"))
+        res = self.client.get(reverse("auth-profile"))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.json()["data"]["phone_number"], self.admin.phone_number)
 
     def test_me_unauthenticated(self):
-        res = self.client.get(reverse("auth-me"))
+        res = self.client.get(reverse("auth-profile"))
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_change_password_success(self):
@@ -138,7 +138,7 @@ class AdminTests(TestCase):
                 "password": "Owner@1234",
                 "first_name": "Gym",
                 "last_name": "Owner",
-                "gender": "MALE",
+                "gender": "male",
                 "gym_name": "Iron Paradise",
                 "membership": "Monthly",
             },
@@ -161,7 +161,7 @@ class AdminTests(TestCase):
                 "password": "Owner@1234",
                 "first_name": "Gym",
                 "last_name": "Owner",
-                "gender": "MALE",
+                "gender": "male",
             },
             format="json",
         )
@@ -179,7 +179,7 @@ class AdminTests(TestCase):
                 "password": "Owner@1234",
                 "first_name": "Gym",
                 "last_name": "Owner",
-                "gender": "MALE",
+                "gender": "male",
             },
             format="json",
         )
@@ -195,12 +195,97 @@ class AdminTests(TestCase):
         self.assertTrue(owner.is_deleted)
         self.assertEqual(owner.status, UserStatus.DELETED)
 
+    def test_admin_enables_gym_owner(self):
+        owner = make_user(
+            "9000000056", "Owner@1234", user_type=UserType.GYM_OWNER,
+            status_=UserStatus.DISABLED,
+        )
+        res = self.client.post(
+            reverse("gym-owner-enable", kwargs={"pk": str(owner.uuid)})
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        owner.refresh_from_db()
+        self.assertEqual(owner.status, UserStatus.ACTIVE)
+
     def test_admin_lists_gym_owners(self):
         make_user("9000000053", "Owner@1234", user_type=UserType.GYM_OWNER)
         make_user("9000000054", "Owner@1234", user_type=UserType.GYM_OWNER)
         res = self.client.get(reverse("gym-owner-list"))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(res.json()["data"]), 2)
+
+    def test_admin_retrieves_gym_owner_with_trainers(self):
+        owner = make_user("9000000057", "Owner@1234", user_type=UserType.GYM_OWNER)
+        trainer = make_user(
+            "9000000112", "T@1234", user_type=UserType.TRAINER, gym=owner,
+            first_name="Priya", last_name="Nair", gender="female",
+        )
+        res = self.client.get(
+            reverse("gym-owner-detail", kwargs={"pk": str(owner.uuid)})
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.json()["data"]
+        self.assertIn("trainers", data)
+        self.assertEqual(len(data["trainers"]), 1)
+        trainer_data = data["trainers"][0]
+        self.assertEqual(trainer_data["uuid"], str(trainer.uuid))
+        self.assertEqual(trainer_data["name"], "Priya Nair")
+        self.assertEqual(trainer_data["phone_number"], "9000000112")
+        self.assertEqual(trainer_data["gender"], "female")
+        self.assertIn("date_of_birth", trainer_data)
+        self.assertIn("age", trainer_data)
+        self.assertIn("created_at", trainer_data)
+
+    def test_admin_overrides_trainer_limit(self):
+        owner = make_user("9000000058", "Owner@1234", user_type=UserType.GYM_OWNER)
+        self.assertEqual(owner.trainer_limit, 5)
+
+        res = self.client.post(
+            reverse("gym-owner-update", kwargs={"pk": str(owner.uuid)}),
+            {"trainer_limit": 10},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        owner.refresh_from_db()
+        self.assertEqual(owner.trainer_limit, 10)
+
+        self.client.force_authenticate(user=owner)
+        for i in range(6):
+            res = self.client.post(
+                reverse("trainer-list"),
+                {
+                    "phone_number": f"90000003{i:02d}",
+                    "password": "Trainer@1234",
+                    "first_name": "T",
+                    "last_name": str(i),
+                    "gender": "male",
+                },
+                format="json",
+            )
+            self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+
+    def test_admin_edits_gym_owner_phone_number(self):
+        owner = make_user("9000000059", "Owner@1234", user_type=UserType.GYM_OWNER)
+        res = self.client.post(
+            reverse("gym-owner-update", kwargs={"pk": str(owner.uuid)}),
+            {"phone_number": "9000000060"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        owner.refresh_from_db()
+        self.assertEqual(owner.phone_number, "9000000060")
+
+    def test_admin_cannot_reuse_phone_number_for_gym_owner(self):
+        owner = make_user("9000000061", "Owner@1234", user_type=UserType.GYM_OWNER)
+        make_user("9000000062", "Owner@1234", user_type=UserType.GYM_OWNER)
+        res = self.client.post(
+            reverse("gym-owner-update", kwargs={"pk": str(owner.uuid)}),
+            {"phone_number": "9000000062"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        owner.refresh_from_db()
+        self.assertEqual(owner.phone_number, "9000000061")
 
 
 class TrainerManagementTests(TestCase):
@@ -218,7 +303,7 @@ class TrainerManagementTests(TestCase):
                 "password": "Trainer@1234",
                 "first_name": "John",
                 "last_name": "Doe",
-                "gender": "MALE",
+                "gender": "male",
             },
             format="json",
         )
@@ -236,11 +321,57 @@ class TrainerManagementTests(TestCase):
                 "password": "Trainer@1234",
                 "first_name": "Dup",
                 "last_name": "User",
-                "gender": "MALE",
+                "gender": "male",
             },
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_409_CONFLICT)
+
+    def test_default_trainer_limit_is_five(self):
+        self.assertEqual(self.gym_owner.trainer_limit, 5)
+
+    def test_create_trainer_rejected_once_limit_reached(self):
+        for i in range(5):
+            make_user(
+                f"90000001{i:02d}", "T@1234",
+                user_type=UserType.TRAINER, gym=self.gym_owner,
+            )
+        res = self.client.post(
+            reverse("trainer-list"),
+            {
+                "phone_number": "9000000199",
+                "password": "Trainer@1234",
+                "first_name": "Sixth",
+                "last_name": "Trainer",
+                "gender": "male",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("trainer_limit", res.json()["data"])
+
+    def test_soft_deleted_trainers_excluded_from_limit(self):
+        trainers = [
+            make_user(
+                f"90000002{i:02d}", "T@1234",
+                user_type=UserType.TRAINER, gym=self.gym_owner,
+            )
+            for i in range(5)
+        ]
+        trainers[0].soft_delete(deleted_by=self.gym_owner)
+
+        res = self.client.post(
+            reverse("trainer-list"),
+            {
+                "phone_number": "9000000299",
+                "password": "Trainer@1234",
+                "first_name": "Replacement",
+                "last_name": "Trainer",
+                "gender": "male",
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
     def test_disable_trainer(self):
         trainer = make_user(
@@ -252,6 +383,18 @@ class TrainerManagementTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         trainer.refresh_from_db()
         self.assertEqual(trainer.status, UserStatus.DISABLED)
+
+    def test_enable_trainer(self):
+        trainer = make_user(
+            "9000000111", "T@1234", user_type=UserType.TRAINER, gym=self.gym_owner,
+            status_=UserStatus.DISABLED,
+        )
+        res = self.client.post(
+            reverse("trainer-enable", kwargs={"pk": str(trainer.uuid)})
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        trainer.refresh_from_db()
+        self.assertEqual(trainer.status, UserStatus.ACTIVE)
 
     def test_update_trainer(self):
         trainer = make_user(
@@ -315,7 +458,7 @@ class MemberManagementTests(TestCase):
                 "password": "Member@1234",
                 "first_name": "Jane",
                 "last_name": "Smith",
-                "gender": "FEMALE",
+                "gender": "female",
             },
             format="json",
         )
@@ -346,7 +489,7 @@ class MemberManagementTests(TestCase):
                 "password": "Member@1234",
                 "first_name": "Dup",
                 "last_name": "User",
-                "gender": "FEMALE",
+                "gender": "female",
             },
             format="json",
         )
@@ -362,6 +505,18 @@ class MemberManagementTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         member.refresh_from_db()
         self.assertEqual(member.status, UserStatus.DISABLED)
+
+    def test_enable_member(self):
+        member = make_user(
+            "9000000211", "M@1234", user_type=UserType.MEMBER, gym=self.gym_owner,
+            status_=UserStatus.DISABLED,
+        )
+        res = self.client.post(
+            reverse("member-enable", kwargs={"pk": str(member.uuid)})
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        member.refresh_from_db()
+        self.assertEqual(member.status, UserStatus.ACTIVE)
 
     def test_update_member(self):
         member = make_user(
@@ -456,3 +611,67 @@ class MemberProfileTests(TestCase):
         self.client.force_authenticate(user=self.gym_owner)
         res = self.client.get(reverse("member-profile"))
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class GymMasterTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.admin = make_user(
+            "9000000006", "Admin@1234", user_type=UserType.ADMIN,
+            is_staff=True, is_superuser=True,
+        )
+        self.member = make_user("9000000007", "M@1234", user_type=UserType.MEMBER)
+        self.gym = Gym.objects.create(name="Iron Paradise")
+
+    def test_admin_creates_gym(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.post(reverse("gym-list"), {"name": "Power House"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(Gym.objects.filter(name="Power House").exists())
+
+    def test_admin_edits_gym(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.post(
+            reverse("gym-update", kwargs={"pk": str(self.gym.uuid)}),
+            {"name": "Renamed Gym"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.gym.refresh_from_db()
+        self.assertEqual(self.gym.name, "Renamed Gym")
+
+    def test_non_admin_cannot_create_gym(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.post(reverse("gym-list"), {"name": "Power House"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_any_authenticated_user_can_list_gyms(self):
+        self.client.force_authenticate(user=self.member)
+        res = self.client.get(reverse("gym-list"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        names = [g["name"] for g in res.json()["data"]]
+        self.assertIn("Iron Paradise", names)
+
+    def test_admin_can_reenable_deleted_gym(self):
+        self.gym.soft_delete()
+        self.client.force_authenticate(user=self.admin)
+
+        res = self.client.get(reverse("gym-list"))
+        names = [g["name"] for g in res.json()["data"]]
+        self.assertNotIn("Iron Paradise", names)
+
+        res = self.client.post(reverse("gym-enable", kwargs={"pk": str(self.gym.uuid)}))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.gym.refresh_from_db()
+        self.assertFalse(self.gym.is_deleted)
+        self.assertIsNone(self.gym.deleted_at)
+
+    def test_non_admin_cannot_reenable_gym(self):
+        self.gym.soft_delete()
+        self.client.force_authenticate(user=self.member)
+        res = self.client.post(reverse("gym-enable", kwargs={"pk": str(self.gym.uuid)}))
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_unauthenticated_user_cannot_list_gyms(self):
+        res = self.client.get(reverse("gym-list"))
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)

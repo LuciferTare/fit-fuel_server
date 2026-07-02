@@ -9,16 +9,17 @@
 ## Table of Contents
 
 1. [Authentication](#1-authentication)
-2. [User Management](#2-user-management)
-3. [Trainer Panel](#3-trainer-panel)
-4. [Member Panel](#4-member-panel)
-5. [Memberships](#5-memberships)
-6. [Payments (Legacy)](#6-payments-legacy)
-7. [Member Payments (Phase 3)](#7-member-payments-phase-3)
-8. [Attendance](#8-attendance)
-9. [Reports](#9-reports)
-10. [Backup / Sync](#10-backup--sync)
-11. [Utility](#11-utility)
+2. [Gym Master](#2-gym-master)
+3. [User Management](#3-user-management)
+4. [Trainer Panel](#4-trainer-panel)
+5. [Member Panel](#5-member-panel)
+6. [Memberships](#6-memberships)
+7. [Payments (Legacy)](#7-payments-legacy)
+8. [Member Payments (Phase 3)](#8-member-payments-phase-3)
+9. [Attendance](#9-attendance)
+10. [Reports](#10-reports)
+11. [Backup / Sync](#11-backup--sync)
+12. [Utility](#12-utility)
 
 ---
 
@@ -26,12 +27,12 @@
 
 | Role                  | Condition                             |
 | --------------------- | ------------------------------------- |
-| `IsAdmin`             | `user_type == ADMIN`                  |
-| `IsGymOwner`          | `user_type == GYM_OWNER`              |
-| `IsTrainer`           | `user_type == TRAINER`                |
-| `IsMember`            | `user_type == MEMBER`                 |
-| `IsAdminOrGymOwner`   | `user_type` in `ADMIN`, `GYM_OWNER`   |
-| `IsGymOwnerOrTrainer` | `user_type` in `GYM_OWNER`, `TRAINER` |
+| `IsAdmin`             | `user_type == admin`                  |
+| `IsGymOwner`          | `user_type == gym_owner`              |
+| `IsTrainer`           | `user_type == trainer`                |
+| `IsMember`            | `user_type == member`                 |
+| `IsAdminOrGymOwner`   | `user_type` in `admin`, `gym_owner`   |
+| `IsGymOwnerOrTrainer` | `user_type` in `gym_owner`, `trainer` |
 
 ---
 
@@ -61,8 +62,8 @@ Login with phone number and password. Returns JWT access/refresh tokens and a us
 | `user.first_name`   | string       | First name                                         |
 | `user.last_name`    | string       | Last name                                          |
 | `user.phone_number` | string       | Phone number                                       |
-| `user.user_type`    | string       | `ADMIN` \| `GYM_OWNER` \| `TRAINER` \| `MEMBER`    |
-| `user.status`       | string       | `ACTIVE` \| `DISABLED` \| `SUSPENDED` \| `DELETED` |
+| `user.user_type`    | string       | `admin` \| `gym_owner` \| `trainer` \| `member`    |
+| `user.status`       | string       | `active` \| `disabled` \| `suspended` \| `deleted` |
 | `user.gym_id`       | UUID \| null | Gym UUID (if applicable)                           |
 | `user.trainer_id`   | UUID \| null | Assigned trainer UUID (if applicable)              |
 
@@ -87,8 +88,8 @@ Login with phone number and password. Returns JWT access/refresh tokens and a us
     "first_name": "Raj",
     "last_name": "Sharma",
     "phone_number": "9876543210",
-    "user_type": "GYM_OWNER",
-    "status": "ACTIVE",
+    "user_type": "gym_owner",
+    "status": "active",
     "gym_id": null,
     "trainer_id": null
   }
@@ -163,7 +164,7 @@ Blacklist the refresh token, invalidating the session.
 
 ---
 
-### GET `/auth/me/`
+### GET `/auth/profile/`
 
 Returns the full profile of the currently authenticated user.
 
@@ -179,10 +180,10 @@ Returns the full profile of the currently authenticated user.
 | `last_name`       | string          | Last name                                          |
 | `date_of_birth`   | string \| null  | Date of birth                                      |
 | `age`             | integer \| null | Computed age                                       |
-| `gender`          | string          | `MALE` \| `FEMALE` \| `OTHER`                      |
+| `gender`          | string          | `male` \| `female` \| `other`                      |
 | `profile_picture` | URL \| null     | Profile image URL                                  |
-| `user_type`       | string          | `ADMIN` \| `GYM_OWNER` \| `TRAINER` \| `MEMBER`    |
-| `status`          | string          | `ACTIVE` \| `DISABLED` \| `SUSPENDED` \| `DELETED` |
+| `user_type`       | string          | `admin` \| `gym_owner` \| `trainer` \| `member`    |
+| `status`          | string          | `active` \| `disabled` \| `suspended` \| `deleted` |
 | `gym_id`          | UUID \| null    | Associated gym                                     |
 | `trainer_id`      | UUID \| null    | Assigned trainer                                   |
 | `created_at`      | datetime        | Account creation timestamp                         |
@@ -197,10 +198,10 @@ Returns the full profile of the currently authenticated user.
   "last_name": "Sharma",
   "date_of_birth": "1990-05-15",
   "age": 35,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": "http://localhost:8000/media/profile_pictures/raj.jpg",
-  "user_type": "GYM_OWNER",
-  "status": "ACTIVE",
+  "user_type": "gym_owner",
+  "status": "active",
   "gym_id": null,
   "trainer_id": null,
   "created_at": "2025-01-10T08:30:00Z"
@@ -241,7 +242,179 @@ Change the authenticated user's password.
 
 ---
 
-## 2. User Management
+## 2. Gym Master
+
+Master record of gym names, referenced by `gym_uuid` on gym-owner accounts (see [User Management](#3-user-management)). Endpoints under `/gyms/` support pagination, search, and ordering.
+
+**Permission:** `IsAdmin` for create/update/delete. Any authenticated user (`admin`, `gym_owner`, `trainer`, `member`) can list/retrieve.
+
+**Common query parameters:**
+
+| Param       | Description                                 |
+| ----------- | ------------------------------------------- |
+| `page`      | Page number                                 |
+| `page_size` | Results per page                            |
+| `search`    | Search against `name`                       |
+| `ordering`  | Sort field (prefix with `-` for descending) |
+
+---
+
+### GET `/gyms/`
+
+List all gyms.
+
+**Permission:** Authenticated (any role)
+
+#### Response (paginated list)
+
+```json
+{
+  "count": 1,
+  "next": null,
+  "previous": null,
+  "data": [
+    {
+      "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+      "name": "Iron Paradise"
+    }
+  ]
+}
+```
+
+---
+
+### POST `/gyms/`
+
+Create a new gym master record.
+
+**Permission:** `IsAdmin`
+
+#### Request
+
+| Field  | Type   | Required | Description |
+| ------ | ------ | -------- | ----------- |
+| `name` | string | Yes      | Gym name    |
+
+#### Example JSON Request
+
+```json
+{
+  "name": "Iron Paradise"
+}
+```
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "name": "Iron Paradise"
+}
+```
+
+---
+
+### GET `/gyms/{uuid}/`
+
+Retrieve a single gym by UUID.
+
+**Permission:** Authenticated (any role)
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "name": "Iron Paradise"
+}
+```
+
+---
+
+### PUT `/gyms/{uuid}/`
+
+Full update of a gym record.
+
+**Permission:** `IsAdmin`
+
+#### Example JSON Request
+
+```json
+{
+  "name": "Renamed Gym"
+}
+```
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "name": "Renamed Gym"
+}
+```
+
+---
+
+### POST `/gyms/{uuid}/update/`
+
+Partial update of a gym record.
+
+**Permission:** `IsAdmin`
+
+#### Example JSON Request
+
+```json
+{
+  "name": "Renamed Gym"
+}
+```
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "name": "Renamed Gym"
+}
+```
+
+---
+
+### DELETE `/gyms/{uuid}/`
+
+Soft-delete a gym record (sets `is_deleted = true`).
+
+**Permission:** `IsAdmin`
+
+#### Example JSON Response
+
+```json
+{
+  "detail": "Deleted successfully."
+}
+```
+
+---
+
+### POST `/gyms/{uuid}/enable/`
+
+Re-enable a soft-deleted gym record (sets `is_deleted = false`).
+
+**Permission:** `IsAdmin`
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "name": "Iron Paradise"
+}
+```
+
+---
+
+## 3. User Management
 
 All endpoints under `/users/` support pagination, filtering, searching, and ordering.
 
@@ -278,11 +451,12 @@ List all gym owners. Supports filtering, search, and ordering.
       "last_name": "Sharma",
       "date_of_birth": "1985-03-20",
       "age": 40,
-      "gender": "MALE",
+      "gender": "male",
       "profile_picture": null,
-      "user_type": "GYM_OWNER",
-      "status": "ACTIVE",
-      "gym_name": "Iron Paradise",
+      "user_type": "gym_owner",
+      "status": "active",
+      "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+      "trainer_limit": 5,
       "membership_start": "2026-01-15",
       "membership_end": "2026-02-14",
       "created_at": "2025-01-10T08:30:00Z"
@@ -308,7 +482,7 @@ Create a new gym owner account.
 | `first_name`      | string         | Yes      | First name                                                                                            |
 | `last_name`       | string         | Yes      | Last name                                                                                             |
 | `date_of_birth`   | string \| null | No       | Format: `YYYY-MM-DD`                                                                                  |
-| `gender`          | string         | No       | `MALE` \| `FEMALE` \| `OTHER`                                                                         |
+| `gender`          | string         | No       | `male` \| `female` \| `other`                                                                         |
 | `profile_picture` | file \| null   | No       | Image upload                                                                                          |
 | `gym_name`        | string         | Yes      | Name of the gym owned by this account; stored in a separate `Gym` master record                       |
 | `membership`      | string         | Yes      | `Monthly` \| `Quarterly` \| `Half-Yearly` \| `Yearly` — see below for how `membership_end` is derived |
@@ -333,7 +507,7 @@ If the start day doesn't exist in the target month (e.g. Jan 31 + 1 month), it's
   "first_name": "Raj",
   "last_name": "Sharma",
   "date_of_birth": "1985-03-20",
-  "gender": "MALE",
+  "gender": "male",
   "gym_name": "Iron Paradise",
   "membership": "Monthly"
 }
@@ -348,9 +522,9 @@ If the start day doesn't exist in the target month (e.g. Jan 31 + 1 month), it's
   "first_name": "Raj",
   "last_name": "Sharma",
   "date_of_birth": "1985-03-20",
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "status": "ACTIVE",
+  "status": "active",
   "created_at": "2026-06-30T10:00:00Z"
 }
 ```
@@ -359,9 +533,19 @@ If the start day doesn't exist in the target month (e.g. Jan 31 + 1 month), it's
 
 ### GET `/users/gym-owners/{uuid}/`
 
-Retrieve a single gym owner by UUID.
+Retrieve a single gym owner by UUID. The response includes a `trainers` list — every active trainer assigned to this gym owner's gym.
 
 **Permission:** `IsAdmin`
+
+| `trainers[]` field | Type            | Description                   |
+| ------------------ | --------------- | ----------------------------- |
+| `uuid`             | UUID            | Trainer UUID                  |
+| `name`             | string          | Trainer's full name           |
+| `phone_number`     | string          | Trainer's phone number        |
+| `date_of_birth`    | string \| null  | Date of birth                 |
+| `age`              | integer \| null | Computed age                  |
+| `gender`           | string          | `male` \| `female` \| `other` |
+| `created_at`       | datetime        | Account creation timestamp    |
 
 #### Example JSON Response
 
@@ -373,14 +557,26 @@ Retrieve a single gym owner by UUID.
   "last_name": "Sharma",
   "date_of_birth": "1985-03-20",
   "age": 40,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "GYM_OWNER",
-  "status": "ACTIVE",
-  "gym_name": "Iron Paradise",
+  "user_type": "gym_owner",
+  "status": "active",
+  "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "trainer_limit": 5,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
-  "created_at": "2025-01-10T08:30:00Z"
+  "created_at": "2025-01-10T08:30:00Z",
+  "trainers": [
+    {
+      "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Priya Nair",
+      "phone_number": "9000000001",
+      "date_of_birth": "1995-07-12",
+      "age": 30,
+      "gender": "female",
+      "created_at": "2025-03-01T09:00:00Z"
+    }
+  ]
 }
 ```
 
@@ -394,7 +590,11 @@ Full update of a gym owner record.
 
 #### Request
 
-Uses the same writable fields as `GymOwnerDetailSerializer` — `first_name`, `last_name`, `date_of_birth`, `gender`, `profile_picture`, `status`, `membership_start`, `membership_end` (all required for PUT). Note this is a different serializer than `POST /users/gym-owners/`: `gym_name` and `membership` are create-only and cannot be changed via PUT/`update/`.
+Uses the same writable fields as `GymOwnerDetailSerializer` — `phone_number`, `first_name`, `last_name`, `date_of_birth`, `gender`, `profile_picture`, `status`, `trainer_limit`, `membership_start`, `membership_end` (all required for PUT). Note this is a different serializer than `POST /users/gym-owners/`: `gym_name` and `membership` are create-only and cannot be changed via PUT/`update/`.
+
+`phone_number` must remain unique across all users; reusing another account's number returns a validation error.
+
+`trainer_limit` (integer, min `0`) is the max number of active trainers this gym owner may create (see the "Trainer limit" note under `POST /users/trainers/`). Admins can override it here at any time, regardless of the default of `5`.
 
 #### Example JSON Request
 
@@ -403,8 +603,9 @@ Uses the same writable fields as `GymOwnerDetailSerializer` — `first_name`, `l
   "first_name": "Rajesh",
   "last_name": "Sharma",
   "date_of_birth": "1985-03-20",
-  "gender": "MALE",
-  "status": "ACTIVE",
+  "gender": "male",
+  "status": "active",
+  "trainer_limit": 10,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14"
 }
@@ -420,11 +621,12 @@ Uses the same writable fields as `GymOwnerDetailSerializer` — `first_name`, `l
   "last_name": "Sharma",
   "date_of_birth": "1985-03-20",
   "age": 40,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "GYM_OWNER",
-  "status": "ACTIVE",
-  "gym_name": "Iron Paradise",
+  "user_type": "gym_owner",
+  "status": "active",
+  "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "trainer_limit": 10,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z"
@@ -435,7 +637,7 @@ Uses the same writable fields as `GymOwnerDetailSerializer` — `first_name`, `l
 
 ### POST `/users/gym-owners/{uuid}/update/`
 
-Partial update of a gym owner record.
+Partial update of a gym owner record. Also used by admins to override `trainer_limit` alone, without resending every other field.
 
 **Permission:** `IsAdmin`
 
@@ -443,7 +645,7 @@ Partial update of a gym owner record.
 
 ```json
 {
-  "first_name": "Rajesh"
+  "trainer_limit": 10
 }
 ```
 
@@ -457,11 +659,12 @@ Partial update of a gym owner record.
   "last_name": "Sharma",
   "date_of_birth": "1985-03-20",
   "age": 40,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "GYM_OWNER",
-  "status": "ACTIVE",
-  "gym_name": "Iron Paradise",
+  "user_type": "gym_owner",
+  "status": "active",
+  "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "trainer_limit": 10,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z"
@@ -488,7 +691,7 @@ Soft-delete a gym owner (sets `is_deleted = true`).
 
 ### POST `/users/gym-owners/{uuid}/disable/`
 
-Disable a gym owner account (sets `status = DISABLED`).
+Disable a gym owner account (sets `status = disabled`).
 
 **Permission:** `IsAdmin`
 
@@ -502,11 +705,42 @@ Disable a gym owner account (sets `status = DISABLED`).
   "last_name": "Sharma",
   "date_of_birth": "1985-03-20",
   "age": 40,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "GYM_OWNER",
-  "status": "DISABLED",
-  "gym_name": "Iron Paradise",
+  "user_type": "gym_owner",
+  "status": "disabled",
+  "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "trainer_limit": 5,
+  "membership_start": "2026-01-15",
+  "membership_end": "2026-02-14",
+  "created_at": "2025-01-10T08:30:00Z"
+}
+```
+
+---
+
+### POST `/users/gym-owners/{uuid}/enable/`
+
+Re-enable a gym owner account (sets `status = active`).
+
+**Permission:** `IsAdmin`
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "phone_number": "9876543210",
+  "first_name": "Raj",
+  "last_name": "Sharma",
+  "date_of_birth": "1985-03-20",
+  "age": 40,
+  "gender": "male",
+  "profile_picture": null,
+  "user_type": "gym_owner",
+  "status": "active",
+  "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+  "trainer_limit": 5,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z"
@@ -538,10 +772,10 @@ List all trainers belonging to the requesting gym owner's gym.
       "last_name": "Nair",
       "date_of_birth": "1995-07-12",
       "age": 30,
-      "gender": "FEMALE",
+      "gender": "female",
       "profile_picture": null,
-      "user_type": "TRAINER",
-      "status": "ACTIVE",
+      "user_type": "trainer",
+      "status": "active",
       "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "created_at": "2025-03-01T09:00:00Z"
     }
@@ -557,6 +791,16 @@ Create a new trainer under the requesting gym owner's gym.
 
 **Permission:** `IsGymOwner`
 
+**Trainer limit:** Each gym owner may have at most `trainer_limit` active trainers (default `5`; soft-deleted trainers don't count toward this). Increasing it normally requires an additional payment, which is not yet implemented — until then, an admin can override a gym owner's `trainer_limit` directly via `PUT`/`POST /users/gym-owners/{uuid}/update/`. Exceeding the current limit returns:
+
+```json
+{
+  "trainer_limit": "Trainer limit of 5 has been reached."
+}
+```
+
+with HTTP 400.
+
 #### Request
 
 | Field             | Type           | Required | Description                   |
@@ -566,7 +810,7 @@ Create a new trainer under the requesting gym owner's gym.
 | `first_name`      | string         | Yes      | First name                    |
 | `last_name`       | string         | Yes      | Last name                     |
 | `date_of_birth`   | string \| null | No       | Format: `YYYY-MM-DD`          |
-| `gender`          | string         | No       | `MALE` \| `FEMALE` \| `OTHER` |
+| `gender`          | string         | No       | `male` \| `female` \| `other` |
 | `profile_picture` | file \| null   | No       | Image upload                  |
 
 #### Example JSON Request
@@ -578,7 +822,7 @@ Create a new trainer under the requesting gym owner's gym.
   "first_name": "Priya",
   "last_name": "Nair",
   "date_of_birth": "1995-07-12",
-  "gender": "FEMALE"
+  "gender": "female"
 }
 ```
 
@@ -592,10 +836,10 @@ Create a new trainer under the requesting gym owner's gym.
   "last_name": "Nair",
   "date_of_birth": "1995-07-12",
   "age": 30,
-  "gender": "FEMALE",
+  "gender": "female",
   "profile_picture": null,
-  "user_type": "TRAINER",
-  "status": "ACTIVE",
+  "user_type": "trainer",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "created_at": "2026-06-30T10:00:00Z"
 }
@@ -619,10 +863,10 @@ Retrieve a trainer by UUID.
   "last_name": "Nair",
   "date_of_birth": "1995-07-12",
   "age": 30,
-  "gender": "FEMALE",
+  "gender": "female",
   "profile_picture": null,
-  "user_type": "TRAINER",
-  "status": "ACTIVE",
+  "user_type": "trainer",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "created_at": "2025-03-01T09:00:00Z"
 }
@@ -642,8 +886,8 @@ Full update of a trainer record.
 {
   "first_name": "Priyanka",
   "last_name": "Nair",
-  "gender": "FEMALE",
-  "status": "ACTIVE"
+  "gender": "female",
+  "status": "active"
 }
 ```
 
@@ -657,10 +901,10 @@ Full update of a trainer record.
   "last_name": "Nair",
   "date_of_birth": "1995-07-12",
   "age": 30,
-  "gender": "FEMALE",
+  "gender": "female",
   "profile_picture": null,
-  "user_type": "TRAINER",
-  "status": "ACTIVE",
+  "user_type": "trainer",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "created_at": "2025-03-01T09:00:00Z"
 }
@@ -692,10 +936,10 @@ Partial update of a trainer record. Optionally update the password.
   "last_name": "Nair",
   "date_of_birth": "1995-07-12",
   "age": 30,
-  "gender": "FEMALE",
+  "gender": "female",
   "profile_picture": null,
-  "user_type": "TRAINER",
-  "status": "ACTIVE",
+  "user_type": "trainer",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "created_at": "2025-03-01T09:00:00Z"
 }
@@ -735,10 +979,37 @@ Disable a trainer account.
   "last_name": "Nair",
   "date_of_birth": "1995-07-12",
   "age": 30,
-  "gender": "FEMALE",
+  "gender": "female",
   "profile_picture": null,
-  "user_type": "TRAINER",
-  "status": "DISABLED",
+  "user_type": "trainer",
+  "status": "disabled",
+  "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "created_at": "2025-03-01T09:00:00Z"
+}
+```
+
+---
+
+### POST `/users/trainers/{uuid}/enable/`
+
+Re-enable a trainer account (sets `status = active`).
+
+**Permission:** `IsGymOwner`
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "phone_number": "9000000001",
+  "first_name": "Priya",
+  "last_name": "Nair",
+  "date_of_birth": "1995-07-12",
+  "age": 30,
+  "gender": "female",
+  "profile_picture": null,
+  "user_type": "trainer",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "created_at": "2025-03-01T09:00:00Z"
 }
@@ -769,10 +1040,10 @@ List all members belonging to the requesting gym owner's gym.
       "last_name": "Verma",
       "date_of_birth": "2000-11-05",
       "age": 25,
-      "gender": "MALE",
+      "gender": "male",
       "profile_picture": null,
-      "user_type": "MEMBER",
-      "status": "ACTIVE",
+      "user_type": "member",
+      "status": "active",
       "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "created_at": "2025-06-01T07:00:00Z"
@@ -798,7 +1069,7 @@ Create a new member under the requesting gym owner's gym.
 | `first_name`      | string         | Yes      | First name                        |
 | `last_name`       | string         | Yes      | Last name                         |
 | `date_of_birth`   | string \| null | No       | Format: `YYYY-MM-DD`              |
-| `gender`          | string         | No       | `MALE` \| `FEMALE` \| `OTHER`     |
+| `gender`          | string         | No       | `male` \| `female` \| `other`     |
 | `profile_picture` | file \| null   | No       | Image upload                      |
 | `trainer_uuid`    | UUID \| null   | No       | UUID of a trainer in the same gym |
 
@@ -811,7 +1082,7 @@ Create a new member under the requesting gym owner's gym.
   "first_name": "Amit",
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
-  "gender": "MALE",
+  "gender": "male",
   "trainer_uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 }
 ```
@@ -826,10 +1097,10 @@ Create a new member under the requesting gym owner's gym.
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "MEMBER",
-  "status": "ACTIVE",
+  "user_type": "member",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "created_at": "2026-06-30T10:00:00Z"
@@ -854,10 +1125,10 @@ Retrieve a member by UUID.
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "MEMBER",
-  "status": "ACTIVE",
+  "user_type": "member",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "created_at": "2025-06-01T07:00:00Z"
@@ -878,8 +1149,8 @@ Full update of a member record.
 {
   "first_name": "Amitabh",
   "last_name": "Verma",
-  "gender": "MALE",
-  "status": "ACTIVE"
+  "gender": "male",
+  "status": "active"
 }
 ```
 
@@ -893,10 +1164,10 @@ Full update of a member record.
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "MEMBER",
-  "status": "ACTIVE",
+  "user_type": "member",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "created_at": "2025-06-01T07:00:00Z"
@@ -929,10 +1200,10 @@ Partial update of a member record.
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "MEMBER",
-  "status": "ACTIVE",
+  "user_type": "member",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "created_at": "2025-06-01T07:00:00Z"
@@ -973,10 +1244,38 @@ Disable a member account.
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "MEMBER",
-  "status": "DISABLED",
+  "user_type": "member",
+  "status": "disabled",
+  "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "created_at": "2025-06-01T07:00:00Z"
+}
+```
+
+---
+
+### POST `/users/members/{uuid}/enable/`
+
+Re-enable a member account (sets `status = active`).
+
+**Permission:** `IsGymOwner`
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+  "phone_number": "9111111111",
+  "first_name": "Amit",
+  "last_name": "Verma",
+  "date_of_birth": "2000-11-05",
+  "age": 25,
+  "gender": "male",
+  "profile_picture": null,
+  "user_type": "member",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "created_at": "2025-06-01T07:00:00Z"
@@ -1015,10 +1314,10 @@ Assign or reassign a trainer to a member.
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "MEMBER",
-  "status": "ACTIVE",
+  "user_type": "member",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "created_at": "2025-06-01T07:00:00Z"
@@ -1027,7 +1326,7 @@ Assign or reassign a trainer to a member.
 
 ---
 
-## 3. Trainer Panel
+## 4. Trainer Panel
 
 Read-only access for trainers to see their assigned members.
 
@@ -1054,10 +1353,10 @@ List all members assigned to the authenticated trainer.
       "last_name": "Verma",
       "date_of_birth": "2000-11-05",
       "age": 25,
-      "gender": "MALE",
+      "gender": "male",
       "profile_picture": null,
-      "user_type": "MEMBER",
-      "status": "ACTIVE",
+      "user_type": "member",
+      "status": "active",
       "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "created_at": "2025-06-01T07:00:00Z"
@@ -1084,10 +1383,10 @@ Retrieve the profile of a specific member assigned to the authenticated trainer.
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE",
+  "gender": "male",
   "profile_picture": null,
-  "user_type": "MEMBER",
-  "status": "ACTIVE",
+  "user_type": "member",
+  "status": "active",
   "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "created_at": "2025-06-01T07:00:00Z"
@@ -1096,7 +1395,7 @@ Retrieve the profile of a specific member assigned to the authenticated trainer.
 
 ---
 
-## 4. Member Panel
+## 5. Member Panel
 
 ### GET `/member/profile/`
 
@@ -1115,7 +1414,7 @@ Retrieve the authenticated member's own profile.
 | `profile_picture` | URL \| null | Profile image URL             |
 | `date_of_birth`   | string      | Date of birth (read-only)     |
 | `age`             | integer     | Computed age (read-only)      |
-| `gender`          | string      | `MALE` \| `FEMALE` \| `OTHER` |
+| `gender`          | string      | `male` \| `female` \| `other` |
 
 #### Example JSON Response
 
@@ -1128,7 +1427,7 @@ Retrieve the authenticated member's own profile.
   "profile_picture": null,
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE"
+  "gender": "male"
 }
 ```
 
@@ -1147,14 +1446,14 @@ Update the authenticated member's own profile. Only editable fields can be chang
 | `first_name`      | string       | No       | First name                    |
 | `last_name`       | string       | No       | Last name                     |
 | `profile_picture` | file \| null | No       | Image upload                  |
-| `gender`          | string       | No       | `MALE` \| `FEMALE` \| `OTHER` |
+| `gender`          | string       | No       | `male` \| `female` \| `other` |
 
 #### Example JSON Request
 
 ```json
 {
   "first_name": "Amitabh",
-  "gender": "MALE"
+  "gender": "male"
 }
 ```
 
@@ -1169,13 +1468,13 @@ Update the authenticated member's own profile. Only editable fields can be chang
   "profile_picture": null,
   "date_of_birth": "2000-11-05",
   "age": 25,
-  "gender": "MALE"
+  "gender": "male"
 }
 ```
 
 ---
 
-## 5. Memberships
+## 6. Memberships
 
 ### GET `/memberships/`
 
@@ -1200,8 +1499,8 @@ List membership records. Gym owners see only their gym's memberships.
       "end_date": "2026-07-01",
       "plan": "Monthly",
       "amount_paid": "1500.00",
-      "payment_mode": "CASH",
-      "status": "ACTIVE",
+      "payment_mode": "cash",
+      "status": "active",
       "created_at": "2026-06-01T08:00:00Z",
       "updated_at": "2026-06-01T08:00:00Z"
     }
@@ -1221,12 +1520,12 @@ Create a new membership record for a member.
 
 | Field          | Type    | Required | Description                                   |
 | -------------- | ------- | -------- | --------------------------------------------- |
-| `member`       | UUID    | Yes      | Member's UUID (must be `user_type == MEMBER`) |
+| `member`       | UUID    | Yes      | Member's UUID (must be `user_type == member`) |
 | `start_date`   | string  | Yes      | Membership start date                         |
 | `end_date`     | string  | Yes      | Membership end date (must be >= `start_date`) |
 | `plan`         | string  | No       | Plan name, max 100 chars                      |
 | `amount_paid`  | decimal | Yes      | Amount paid (e.g., `1500.00`)                 |
-| `payment_mode` | string  | Yes      | `CASH` \| `ONLINE`                            |
+| `payment_mode` | string  | Yes      | `cash` \| `online`                            |
 
 #### Example JSON Request
 
@@ -1237,7 +1536,7 @@ Create a new membership record for a member.
   "end_date": "2026-07-01",
   "plan": "Monthly",
   "amount_paid": "1500.00",
-  "payment_mode": "CASH"
+  "payment_mode": "cash"
 }
 ```
 
@@ -1251,8 +1550,8 @@ Create a new membership record for a member.
   "end_date": "2026-07-01",
   "plan": "Monthly",
   "amount_paid": "1500.00",
-  "payment_mode": "CASH",
-  "status": "ACTIVE",
+  "payment_mode": "cash",
+  "status": "active",
   "created_at": "2026-06-30T10:00:00Z",
   "updated_at": "2026-06-30T10:00:00Z"
 }
@@ -1276,8 +1575,8 @@ Retrieve a specific membership record.
   "end_date": "2026-07-01",
   "plan": "Monthly",
   "amount_paid": "1500.00",
-  "payment_mode": "CASH",
-  "status": "ACTIVE",
+  "payment_mode": "cash",
+  "status": "active",
   "created_at": "2026-06-01T08:00:00Z",
   "updated_at": "2026-06-01T08:00:00Z"
 }
@@ -1300,7 +1599,7 @@ Full update of a membership record.
   "end_date": "2026-08-01",
   "plan": "Bi-Monthly",
   "amount_paid": "2800.00",
-  "payment_mode": "ONLINE"
+  "payment_mode": "online"
 }
 ```
 
@@ -1314,8 +1613,8 @@ Full update of a membership record.
   "end_date": "2026-08-01",
   "plan": "Bi-Monthly",
   "amount_paid": "2800.00",
-  "payment_mode": "ONLINE",
-  "status": "ACTIVE",
+  "payment_mode": "online",
+  "status": "active",
   "created_at": "2026-06-01T08:00:00Z",
   "updated_at": "2026-06-30T11:00:00Z"
 }
@@ -1347,8 +1646,8 @@ Partial update of a membership record.
   "end_date": "2026-08-01",
   "plan": "Monthly",
   "amount_paid": "1500.00",
-  "payment_mode": "CASH",
-  "status": "ACTIVE",
+  "payment_mode": "cash",
+  "status": "active",
   "created_at": "2026-06-01T08:00:00Z",
   "updated_at": "2026-06-30T11:00:00Z"
 }
@@ -1372,7 +1671,7 @@ Soft-delete a membership record.
 
 ---
 
-## 6. Payments (Legacy)
+## 7. Payments (Legacy)
 
 ### GET `/payments/`
 
@@ -1395,7 +1694,7 @@ List payment records. Optionally filter by member using `?member=<uuid>`.
       "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
       "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
       "amount": "1500.00",
-      "mode": "CASH",
+      "mode": "cash",
       "paid_on": "2026-06-01T08:00:00Z",
       "created_at": "2026-06-01T08:00:00Z"
     }
@@ -1417,7 +1716,7 @@ Record a payment against an existing membership.
 | ------------ | -------- | -------- | ----------------------------- |
 | `membership` | UUID     | Yes      | UUID of the linked membership |
 | `amount`     | decimal  | Yes      | Payment amount (must be > 0)  |
-| `mode`       | string   | Yes      | `CASH` \| `ONLINE`            |
+| `mode`       | string   | Yes      | `cash` \| `online`            |
 | `paid_on`    | datetime | Yes      | Payment timestamp             |
 
 #### Example JSON Request
@@ -1426,7 +1725,7 @@ Record a payment against an existing membership.
 {
   "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
   "amount": "1500.00",
-  "mode": "CASH",
+  "mode": "cash",
   "paid_on": "2026-06-01T08:00:00Z"
 }
 ```
@@ -1438,7 +1737,7 @@ Record a payment against an existing membership.
   "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
   "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
   "amount": "1500.00",
-  "mode": "CASH",
+  "mode": "cash",
   "paid_on": "2026-06-01T08:00:00Z",
   "created_at": "2026-06-30T10:00:00Z"
 }
@@ -1459,7 +1758,7 @@ Retrieve a specific payment record.
   "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
   "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
   "amount": "1500.00",
-  "mode": "CASH",
+  "mode": "cash",
   "paid_on": "2026-06-01T08:00:00Z",
   "created_at": "2026-06-01T08:00:00Z"
 }
@@ -1479,7 +1778,7 @@ Full update of a payment record.
 {
   "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
   "amount": "1600.00",
-  "mode": "ONLINE",
+  "mode": "online",
   "paid_on": "2026-06-02T10:00:00Z"
 }
 ```
@@ -1491,7 +1790,7 @@ Full update of a payment record.
   "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
   "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
   "amount": "1600.00",
-  "mode": "ONLINE",
+  "mode": "online",
   "paid_on": "2026-06-02T10:00:00Z",
   "created_at": "2026-06-01T08:00:00Z"
 }
@@ -1509,7 +1808,7 @@ Partial update of a payment record.
 
 ```json
 {
-  "mode": "ONLINE"
+  "mode": "online"
 }
 ```
 
@@ -1520,7 +1819,7 @@ Partial update of a payment record.
   "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
   "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
   "amount": "1500.00",
-  "mode": "ONLINE",
+  "mode": "online",
   "paid_on": "2026-06-01T08:00:00Z",
   "created_at": "2026-06-01T08:00:00Z"
 }
@@ -1544,7 +1843,7 @@ Soft-delete a payment record.
 
 ---
 
-## 7. Member Payments (Phase 3)
+## 8. Member Payments (Phase 3)
 
 A combined endpoint that creates or updates a membership record and records the payment in one operation.
 
@@ -1608,7 +1907,7 @@ Record a membership payment and update the member's membership dates atomically.
   "end_date": "2026-07-31",
   "mode": "Cash",
   "plan": "Monthly",
-  "status": "ACTIVE"
+  "status": "active"
 }
 ```
 
@@ -1637,8 +1936,8 @@ List all membership records, optionally filtered by member.
     "end_date": "2026-07-31",
     "plan": "Monthly",
     "amount_paid": "1500.00",
-    "payment_mode": "CASH",
-    "status": "ACTIVE",
+    "payment_mode": "cash",
+    "status": "active",
     "created_at": "2026-06-30T10:00:00Z",
     "updated_at": "2026-06-30T10:00:00Z"
   }
@@ -1647,7 +1946,7 @@ List all membership records, optionally filtered by member.
 
 ---
 
-## 8. Attendance
+## 9. Attendance
 
 ### POST `/api/attendance/checkin/`
 
@@ -1780,7 +2079,7 @@ List attendance records, optionally filtered by member and/or date.
 
 ---
 
-## 9. Reports
+## 10. Reports
 
 All report endpoints are scoped to the requesting gym owner's gym.
 
@@ -1901,7 +2200,7 @@ Returns members whose membership expires within the next X days (includes alread
 
 ---
 
-## 10. Backup / Sync
+## 11. Backup / Sync
 
 Offline-first sync endpoints using Last-Write-Wins conflict resolution on `updated_at`.
 
@@ -2028,7 +2327,7 @@ Pull server records that have changed since a given timestamp.
 
 ---
 
-## 11. Utility
+## 12. Utility
 
 ### HEAD `/api/health/`
 

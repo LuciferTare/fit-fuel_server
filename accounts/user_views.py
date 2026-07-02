@@ -5,11 +5,12 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
-from accounts.models import CustomUser, Membership, MembershipStatus, Payment, UserStatus, UserType
+from accounts.models import CustomUser, Gym, Membership, MembershipStatus, Payment, UserStatus, UserType
 from accounts.serializers import (
     AssignTrainerSerializer,
     GymOwnerCreateSerializer,
     GymOwnerDetailSerializer,
+    GymSerializer,
     MemberCreateSerializer,
     MemberDetailSerializer,
     MemberPaymentResponseSerializer,
@@ -19,11 +20,63 @@ from accounts.serializers import (
     PaymentSerializer,
     TrainerCreateSerializer,
     TrainerDetailSerializer,
+    TrainerSummarySerializer,
 )
 from core.exceptions import ConflictException
 from core.pagination import CustomPagination
-from core.permissions import IsAdmin, IsAdminOrGymOwner, IsGymOwner, IsMember, IsTrainer
+from core.permissions import (
+    IsAdmin,
+    IsAdminOrGymOwner,
+    IsAuthenticatedUser,
+    IsGymOwner,
+    IsMember,
+    IsTrainer,
+)
 from core.views import BaseModelViewSet, BaseAPIView
+
+
+# ── Gym Master Management ─────────────────────────────────────────────────────
+
+@extend_schema(tags=["Gyms"])
+class GymViewSet(BaseModelViewSet):
+    queryset = Gym.active_objects.all()
+    serializer_class = GymSerializer
+    pagination_class = CustomPagination
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["name"]
+    ordering_fields = ["name", "created_at"]
+    ordering = ["name"]
+
+    def get_queryset(self):
+        if self.action == "enable":
+            return Gym.objects.all()
+        return Gym.active_objects.all()
+
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [IsAuthenticatedUser()]
+        return [IsAdmin()]
+
+    def perform_create(self, serializer):
+        serializer.save(created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(updated_by=self.request.user)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.soft_delete(deleted_by=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(summary="Enable Gym")
+    @action(detail=True, methods=["post"], url_path="enable")
+    def enable(self, request, pk=None):
+        gym = self.get_object()
+        gym.is_deleted = False
+        gym.deleted_at = None
+        gym.updated_by = request.user
+        gym.save(update_fields=["is_deleted", "deleted_at", "updated_by", "updated_at"])
+        return Response(GymSerializer(gym).data)
 
 
 # ── Admin: Gym Owner Management ───────────────────────────────────────────────
@@ -46,6 +99,15 @@ class GymOwnerViewSet(BaseModelViewSet):
         if self.action == "create":
             return GymOwnerCreateSerializer
         return GymOwnerDetailSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        data = dict(self.get_serializer(instance).data)
+        trainers = CustomUser.active_objects.filter(
+            user_type=UserType.TRAINER, gym=instance
+        ).order_by("-created_at")
+        data["trainers"] = TrainerSummarySerializer(trainers, many=True).data
+        return Response(data)
 
     def create(self, request, *args, **kwargs):
         phone = request.data.get("phone_number")
@@ -72,6 +134,15 @@ class GymOwnerViewSet(BaseModelViewSet):
     def disable(self, request, pk=None):
         owner = self.get_object()
         owner.status = UserStatus.DISABLED
+        owner.updated_by = request.user
+        owner.save(update_fields=["status", "updated_by", "updated_at"])
+        return Response(GymOwnerDetailSerializer(owner).data)
+
+    @extend_schema(summary="Enable Gym Owner")
+    @action(detail=True, methods=["post"], url_path="enable")
+    def enable(self, request, pk=None):
+        owner = self.get_object()
+        owner.status = UserStatus.ACTIVE
         owner.updated_by = request.user
         owner.save(update_fields=["status", "updated_by", "updated_at"])
         return Response(GymOwnerDetailSerializer(owner).data)
@@ -107,15 +178,14 @@ class TrainerViewSet(BaseModelViewSet):
             raise ConflictException("This phone number is already registered.")
 
         gym_owner = request.user
-        if gym_owner.trainer_limit > 0:
-            current_count = CustomUser.active_objects.filter(
-                user_type=UserType.TRAINER,
-                gym=gym_owner,
-            ).count()
-            if current_count >= gym_owner.trainer_limit:
-                raise DRFValidationError(
-                    {"trainer_limit": f"Trainer limit of {gym_owner.trainer_limit} has been reached."}
-                )
+        current_count = CustomUser.active_objects.filter(
+            user_type=UserType.TRAINER,
+            gym=gym_owner,
+        ).count()
+        if current_count >= gym_owner.trainer_limit:
+            raise DRFValidationError(
+                {"trainer_limit": f"Trainer limit of {gym_owner.trainer_limit} has been reached."}
+            )
 
         return super().create(request, *args, **kwargs)
 
@@ -139,6 +209,15 @@ class TrainerViewSet(BaseModelViewSet):
     def disable(self, request, pk=None):
         trainer = self.get_object()
         trainer.status = UserStatus.DISABLED
+        trainer.updated_by = request.user
+        trainer.save(update_fields=["status", "updated_by", "updated_at"])
+        return Response(TrainerDetailSerializer(trainer).data)
+
+    @extend_schema(summary="Enable Trainer")
+    @action(detail=True, methods=["post"], url_path="enable")
+    def enable(self, request, pk=None):
+        trainer = self.get_object()
+        trainer.status = UserStatus.ACTIVE
         trainer.updated_by = request.user
         trainer.save(update_fields=["status", "updated_by", "updated_at"])
         return Response(TrainerDetailSerializer(trainer).data)
@@ -194,6 +273,15 @@ class MemberViewSet(BaseModelViewSet):
     def disable(self, request, pk=None):
         member = self.get_object()
         member.status = UserStatus.DISABLED
+        member.updated_by = request.user
+        member.save(update_fields=["status", "updated_by", "updated_at"])
+        return Response(MemberDetailSerializer(member).data)
+
+    @extend_schema(summary="Enable Member")
+    @action(detail=True, methods=["post"], url_path="enable")
+    def enable(self, request, pk=None):
+        member = self.get_object()
+        member.status = UserStatus.ACTIVE
         member.updated_by = request.user
         member.save(update_fields=["status", "updated_by", "updated_at"])
         return Response(MemberDetailSerializer(member).data)
@@ -361,7 +449,7 @@ class MemberPaymentView(BaseAPIView):
         except CustomUser.DoesNotExist:
             return Response({"detail": "Member not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        mode_map = {"Cash": "CASH", "Online": "ONLINE"}
+        mode_map = {"Cash": "cash", "Online": "online"}
         membership = Membership.objects.create(
             member=member,
             start_date=data["start_date"],

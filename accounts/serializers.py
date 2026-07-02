@@ -152,6 +152,15 @@ class UserMeSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+# ── Gym master serializer ───────────────────────────────────────────────────────
+
+class GymSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Gym
+        fields = ["uuid", "name"]
+        read_only_fields = ["uuid"]
+
+
 # ── Gym Owner serializers ─────────────────────────────────────────────────────
 
 class GymOwnerCreateSerializer(serializers.ModelSerializer):
@@ -218,7 +227,8 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
 
 class GymOwnerDetailSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
-    gym_name = serializers.SerializerMethodField()
+    gym_uuid = serializers.UUIDField(source="gym_details_id", read_only=True)
+    trainer_limit = serializers.IntegerField(min_value=0, required=False)
 
     class Meta:
         model = CustomUser
@@ -233,15 +243,13 @@ class GymOwnerDetailSerializer(serializers.ModelSerializer):
             "profile_picture",
             "user_type",
             "status",
-            "gym_name",
+            "gym_uuid",
+            "trainer_limit",
             "membership_start",
             "membership_end",
             "created_at",
         ]
-        read_only_fields = ["uuid", "phone_number", "user_type", "created_at"]
-
-    def get_gym_name(self, obj):
-        return obj.gym_details.name if obj.gym_details_id else None
+        read_only_fields = ["uuid", "user_type", "created_at"]
 
     def update(self, instance, validated_data):
         for attr, value in validated_data.items():
@@ -249,6 +257,26 @@ class GymOwnerDetailSerializer(serializers.ModelSerializer):
         _run_model_validation(instance)
         instance.save()
         return instance
+
+
+class TrainerSummarySerializer(serializers.ModelSerializer):
+    """Compact trainer representation nested under a gym owner's detail response."""
+
+    name = serializers.CharField(source="get_full_name", read_only=True)
+    age = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            "uuid",
+            "name",
+            "phone_number",
+            "date_of_birth",
+            "age",
+            "gender",
+            "created_at",
+        ]
+        read_only_fields = fields
 
 
 # ── Trainer serializers ───────────────────────────────────────────────────────

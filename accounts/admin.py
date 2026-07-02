@@ -95,7 +95,7 @@ class CustomUserAdmin(admin.ModelAdmin):
                 )
             },
         ),
-        ("Business", {"fields": ("user_type", "status", "gym", "gym_details", "trainer")}),
+        ("Business", {"fields": ("user_type", "status", "gym", "gym_details", "trainer", "trainer_limit")}),
         (
             "Permissions",
             {

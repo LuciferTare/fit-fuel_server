@@ -11,7 +11,7 @@ class Attendance(BaseModel):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="attendances",
-        limit_choices_to={"user_type": "MEMBER"},
+        limit_choices_to={"user_type": "member"},
     )
     check_in = models.DateTimeField()
     check_out = models.DateTimeField(null=True, blank=True)
