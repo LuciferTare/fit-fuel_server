@@ -229,6 +229,8 @@ class GymOwnerDetailSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
     gym_uuid = serializers.UUIDField(source="gym_details_id", read_only=True)
     trainer_limit = serializers.IntegerField(min_value=0, required=False)
+    trainer_count = serializers.IntegerField(read_only=True)
+    member_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = CustomUser
@@ -245,6 +247,8 @@ class GymOwnerDetailSerializer(serializers.ModelSerializer):
             "status",
             "gym_uuid",
             "trainer_limit",
+            "trainer_count",
+            "member_count",
             "membership_start",
             "membership_end",
             "created_at",

@@ -1,3 +1,4 @@
+from django.db.models import Count, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status
@@ -93,7 +94,18 @@ class GymOwnerViewSet(BaseModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        return CustomUser.active_objects.filter(user_type=UserType.GYM_OWNER)
+        return CustomUser.active_objects.filter(user_type=UserType.GYM_OWNER).annotate(
+            trainer_count=Count(
+                "gym_users",
+                filter=Q(gym_users__user_type=UserType.TRAINER, gym_users__is_deleted=False),
+                distinct=True,
+            ),
+            member_count=Count(
+                "gym_users",
+                filter=Q(gym_users__user_type=UserType.MEMBER, gym_users__is_deleted=False),
+                distinct=True,
+            ),
+        )
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -152,7 +164,6 @@ class GymOwnerViewSet(BaseModelViewSet):
 
 @extend_schema(tags=["Trainers"])
 class TrainerViewSet(BaseModelViewSet):
-    permission_classes = [IsGymOwner]
     pagination_class = CustomPagination
     queryset = CustomUser.objects.none()  # overridden by get_queryset; needed for schema gen
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -161,10 +172,18 @@ class TrainerViewSet(BaseModelViewSet):
     ordering_fields = ["first_name", "last_name", "created_at"]
     ordering = ["-created_at"]
 
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [IsAdminOrGymOwner()]
+        return [IsGymOwner()]
+
     def get_queryset(self):
+        user = self.request.user
+        if self.action in ("list", "retrieve") and user.user_type == UserType.ADMIN:
+            return CustomUser.active_objects.filter(user_type=UserType.TRAINER)
         return CustomUser.active_objects.filter(
             user_type=UserType.TRAINER,
-            gym=self.request.user,
+            gym=user,
         )
 
     def get_serializer_class(self):
@@ -227,7 +246,6 @@ class TrainerViewSet(BaseModelViewSet):
 
 @extend_schema(tags=["Members"])
 class MemberViewSet(BaseModelViewSet):
-    permission_classes = [IsGymOwner]
     pagination_class = CustomPagination
     queryset = CustomUser.objects.none()  # overridden by get_queryset; needed for schema gen
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
@@ -236,10 +254,18 @@ class MemberViewSet(BaseModelViewSet):
     ordering_fields = ["first_name", "last_name", "created_at"]
     ordering = ["-created_at"]
 
+    def get_permissions(self):
+        if self.action in ("list", "retrieve"):
+            return [IsAdminOrGymOwner()]
+        return [IsGymOwner()]
+
     def get_queryset(self):
+        user = self.request.user
+        if self.action in ("list", "retrieve") and user.user_type == UserType.ADMIN:
+            return CustomUser.active_objects.filter(user_type=UserType.MEMBER)
         return CustomUser.active_objects.filter(
             user_type=UserType.MEMBER,
-            gym=self.request.user,
+            gym=user,
         )
 
     def get_serializer_class(self):

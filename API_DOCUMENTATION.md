@@ -423,7 +423,7 @@ All endpoints under `/users/` support pagination, filtering, searching, and orde
 | Param       | Description                                 |
 | ----------- | ------------------------------------------- |
 | `page`      | Page number                                 |
-| `page_size` | Results per page                            |
+| `page_size` | Results per page                            |Darth Vader's famous reveal to Luke is iconic. But which of these is the right one?
 | `search`    | Search against name and phone fields        |
 | `ordering`  | Sort field (prefix with `-` for descending) |
 | `status`    | Filter by user status                       |
@@ -432,7 +432,7 @@ All endpoints under `/users/` support pagination, filtering, searching, and orde
 
 ### GET `/users/gym-owners/`
 
-List all gym owners. Supports filtering, search, and ordering.
+List all gym owners. Supports filtering, search, and ordering. Each entry includes `trainer_count` and `member_count` — the number of active (non-deleted) trainers and members belonging to that gym owner.
 
 **Permission:** `IsAdmin`
 
@@ -457,6 +457,8 @@ List all gym owners. Supports filtering, search, and ordering.
       "status": "active",
       "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
       "trainer_limit": 5,
+      "trainer_count": 3,
+      "member_count": 42,
       "membership_start": "2026-01-15",
       "membership_end": "2026-02-14",
       "created_at": "2025-01-10T08:30:00Z"
@@ -533,7 +535,7 @@ If the start day doesn't exist in the target month (e.g. Jan 31 + 1 month), it's
 
 ### GET `/users/gym-owners/{uuid}/`
 
-Retrieve a single gym owner by UUID. The response includes a `trainers` list — every active trainer assigned to this gym owner's gym.
+Retrieve a single gym owner by UUID. The response includes `trainer_count`/`member_count` (active trainer and member totals for this gym owner) and a `trainers` list — every active trainer assigned to this gym owner's gym.
 
 **Permission:** `IsAdmin`
 
@@ -563,6 +565,8 @@ Retrieve a single gym owner by UUID. The response includes a `trainers` list —
   "status": "active",
   "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
   "trainer_limit": 5,
+  "trainer_count": 1,
+  "member_count": 0,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z",
@@ -627,6 +631,8 @@ Uses the same writable fields as `GymOwnerDetailSerializer` — `phone_number`, 
   "status": "active",
   "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
   "trainer_limit": 10,
+  "trainer_count": 1,
+  "member_count": 0,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z"
@@ -665,6 +671,8 @@ Partial update of a gym owner record. Also used by admins to override `trainer_l
   "status": "active",
   "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
   "trainer_limit": 10,
+  "trainer_count": 1,
+  "member_count": 0,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z"
@@ -711,6 +719,8 @@ Disable a gym owner account (sets `status = disabled`).
   "status": "disabled",
   "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
   "trainer_limit": 5,
+  "trainer_count": 1,
+  "member_count": 0,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z"
@@ -741,6 +751,8 @@ Re-enable a gym owner account (sets `status = active`).
   "status": "active",
   "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
   "trainer_limit": 5,
+  "trainer_count": 1,
+  "member_count": 0,
   "membership_start": "2026-01-15",
   "membership_end": "2026-02-14",
   "created_at": "2025-01-10T08:30:00Z"
@@ -751,9 +763,9 @@ Re-enable a gym owner account (sets `status = active`).
 
 ### GET `/users/trainers/`
 
-List all trainers belonging to the requesting gym owner's gym.
+List trainers. Gym owners see only trainers belonging to their own gym; admins see every trainer across all gyms.
 
-**Permission:** `IsGymOwner`  
+**Permission:** `IsAdminOrGymOwner`  
 **Filter fields:** `status`  
 **Search fields:** `first_name`, `last_name`, `phone_number`
 
@@ -849,9 +861,9 @@ with HTTP 400.
 
 ### GET `/users/trainers/{uuid}/`
 
-Retrieve a trainer by UUID.
+Retrieve a trainer by UUID. Gym owners can only retrieve trainers belonging to their own gym; admins can retrieve any trainer.
 
-**Permission:** `IsGymOwner`
+**Permission:** `IsAdminOrGymOwner`
 
 #### Example JSON Response
 
@@ -1019,9 +1031,9 @@ Re-enable a trainer account (sets `status = active`).
 
 ### GET `/users/members/`
 
-List all members belonging to the requesting gym owner's gym.
+List members. Gym owners see only members belonging to their own gym; admins see every member across all gyms.
 
-**Permission:** `IsGymOwner`  
+**Permission:** `IsAdminOrGymOwner`  
 **Filter fields:** `status`, `gender`, `trainer`  
 **Search fields:** `first_name`, `last_name`, `phone_number`
 
@@ -1111,9 +1123,9 @@ Create a new member under the requesting gym owner's gym.
 
 ### GET `/users/members/{uuid}/`
 
-Retrieve a member by UUID.
+Retrieve a member by UUID. Gym owners can only retrieve members belonging to their own gym; admins can retrieve any member.
 
-**Permission:** `IsGymOwner`
+**Permission:** `IsAdminOrGymOwner`
 
 #### Example JSON Response
 
