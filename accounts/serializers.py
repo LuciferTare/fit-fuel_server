@@ -550,32 +550,76 @@ class MembershipSerializer(serializers.ModelSerializer):
 
 # ── Payment serializers ───────────────────────────────────────────────────────
 
-class PaymentSerializer(serializers.ModelSerializer):
+class PaymentListSerializer(serializers.ModelSerializer):
+    """Read-only payment shape consumed by the Flutter PaymentModel."""
+
+    member_name = serializers.SerializerMethodField()
+    member_phone = serializers.SerializerMethodField()
+    gym_name = serializers.SerializerMethodField()
+    amount = serializers.DecimalField(
+        max_digits=10, decimal_places=2, coerce_to_string=False, read_only=True
+    )
+    method = serializers.CharField(source="mode", read_only=True)
+    membership_plan = serializers.SerializerMethodField()
+    payment_date = serializers.DateTimeField(
+        source="paid_on", format="%Y-%m-%d", read_only=True
+    )
+
     class Meta:
         model = Payment
         fields = [
             "uuid",
-            "membership",
+            "invoice_number",
+            "member_name",
+            "member_phone",
+            "gym_name",
             "amount",
-            "mode",
+            "status",
+            "method",
+            "membership_plan",
+            "payment_date",
+            "due_date",
+        ]
+        read_only_fields = fields
+
+    def get_member_name(self, obj):
+        return obj.paid_by.get_full_name() if obj.paid_by else None
+
+    def get_member_phone(self, obj):
+        return obj.paid_by.phone_number if obj.paid_by else None
+
+    def get_gym_name(self, obj):
+        payer = obj.paid_by
+        if not payer:
+            return None
+        # Gym owner paying the admin — their own gym; member paying — their gym's owner.
+        gym_owner = payer if payer.user_type == UserType.GYM_OWNER else payer.gym
+        if gym_owner and gym_owner.gym_details:
+            return gym_owner.gym_details.name
+        return None
+
+    def get_membership_plan(self, obj):
+        return obj.membership.plan if obj.membership else None
+
+
+class PaymentDetailSerializer(PaymentListSerializer):
+    """Single-payment detail: everything in the list shape plus linkage and audit fields."""
+
+    member = serializers.UUIDField(source="paid_by.uuid", read_only=True, default=None)
+    membership = serializers.UUIDField(
+        source="membership.uuid", read_only=True, default=None
+    )
+    paid_on = serializers.DateTimeField(read_only=True)
+
+    class Meta(PaymentListSerializer.Meta):
+        fields = PaymentListSerializer.Meta.fields + [
+            "member",
+            "membership",
             "paid_on",
             "created_at",
+            "updated_at",
         ]
-        read_only_fields = ["uuid", "created_at"]
-
-    def validate_amount(self, value):
-        if value <= 0:
-            raise serializers.ValidationError("Amount must be greater than zero.")
-        return value
-
-    def validate_membership(self, value):
-        request = self.context.get("request")
-        if request and request.user.user_type == UserType.GYM_OWNER:
-            if value.member.gym != request.user:
-                raise serializers.ValidationError(
-                    "Membership does not belong to your gym."
-                )
-        return value
+        read_only_fields = fields
 
 
 # ── Phase-3 payment (member-centric) serializers ──────────────────────────────

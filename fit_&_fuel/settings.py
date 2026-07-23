@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "attendance",
     "reports",
     "backup",
+    "music",
 ]
 
 SPECTACULAR_SETTINGS = {

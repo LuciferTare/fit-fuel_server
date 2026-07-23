@@ -1,4 +1,5 @@
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Value
+from django.db.models.functions import Concat
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status
@@ -18,7 +19,8 @@ from accounts.serializers import (
     MemberPaymentSerializer,
     MemberProfileSerializer,
     MembershipSerializer,
-    PaymentSerializer,
+    PaymentDetailSerializer,
+    PaymentListSerializer,
     TrainerCreateSerializer,
     TrainerDetailSerializer,
     TrainerSummarySerializer,
@@ -33,7 +35,7 @@ from core.permissions import (
     IsMember,
     IsTrainer,
 )
-from core.views import BaseModelViewSet, BaseAPIView
+from core.views import BaseAPIView, BaseModelViewSet, BaseReadOnlyModelViewSet
 
 
 # ── Gym Master Management ─────────────────────────────────────────────────────
@@ -412,40 +414,55 @@ class MembershipViewSet(BaseModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-# ── Gym Owner: Payment Management ────────────────────────────────────────────
+# ── Payment fetching (read-only) ──────────────────────────────────────────────
 
 @extend_schema(tags=["Payments"])
-class PaymentViewSet(BaseModelViewSet):
+class PaymentViewSet(BaseReadOnlyModelViewSet):
+    """GET-only payments, scoped to payments received by the requesting user.
+
+    - Admin sees payments made by gym owners (platform payments).
+    - Gym Owner sees payments made by their gym's members.
+    """
+
     permission_classes = [IsAdminOrGymOwner]
     pagination_class = CustomPagination
-    serializer_class = PaymentSerializer
+    serializer_class = PaymentListSerializer
     queryset = Payment.objects.none()
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = ["mode", "membership"]
-    ordering_fields = ["paid_on", "created_at"]
-    ordering = ["-paid_on"]
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return PaymentDetailSerializer
+        return PaymentListSerializer
 
     def get_queryset(self):
         user = self.request.user
+        qs = Payment.active_objects.select_related(
+            "membership",
+            "paid_by__gym__gym_details",
+            "paid_by__gym_details",
+        )
         if user.user_type == UserType.ADMIN:
-            qs = Payment.active_objects.all()
+            qs = qs.filter(paid_by__user_type=UserType.GYM_OWNER)
         else:
-            qs = Payment.active_objects.filter(membership__member__gym=user)
-        member_uuid = self.request.query_params.get("member")
-        if member_uuid:
-            qs = qs.filter(membership__member__uuid=member_uuid)
-        return qs
+            qs = qs.filter(paid_by__user_type=UserType.MEMBER, paid_by__gym=user)
 
-    def perform_create(self, serializer):
-        serializer.save(created_by=self.request.user, updated_by=self.request.user)
+        status_param = self.request.query_params.get("status")
+        if status_param:
+            qs = qs.filter(status=status_param)
 
-    def perform_update(self, serializer):
-        serializer.save(updated_by=self.request.user)
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.soft_delete(deleted_by=request.user)
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        search = self.request.query_params.get("search")
+        if search:
+            qs = qs.annotate(
+                payer_name=Concat(
+                    "paid_by__first_name", Value(" "), "paid_by__last_name"
+                )
+            ).filter(
+                Q(invoice_number__icontains=search)
+                | Q(payer_name__icontains=search)
+                | Q(paid_by__gym__gym_details__name__icontains=search)
+                | Q(paid_by__gym_details__name__icontains=search)
+            )
+        return qs.order_by("-paid_on")
 
 
 # ── Phase-3: Member-centric payment entry point ───────────────────────────────

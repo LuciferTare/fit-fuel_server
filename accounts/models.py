@@ -229,6 +229,12 @@ class PaymentMode(models.TextChoices):
     ONLINE = "online", "Online"
 
 
+class PaymentStatus(models.TextChoices):
+    PAID = "paid", "Paid"
+    PENDING = "pending", "Pending"
+    OVERDUE = "overdue", "Overdue"
+
+
 # ── Membership model ───────────────────────────────────────────────────────────
 
 class Membership(BaseModel):
@@ -263,14 +269,37 @@ class Membership(BaseModel):
 # ── Payment model ──────────────────────────────────────────────────────────────
 
 class Payment(BaseModel):
+    # Who made the payment: a MEMBER (paying their gym owner) or a GYM_OWNER
+    # (paying the platform admin). Scoping in views is derived from this.
+    paid_by = models.ForeignKey(
+        CustomUser,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="payments_made",
+        limit_choices_to={"user_type__in": [UserType.MEMBER, UserType.GYM_OWNER]},
+    )
+    # Set only for member payments; gym-owner→admin payments have no membership.
     membership = models.ForeignKey(
         Membership,
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
         related_name="payments",
     )
+    invoice_number = models.CharField(
+        max_length=30, unique=True, null=True, blank=True, editable=False
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     mode = models.CharField(max_length=10, choices=PaymentMode.choices)
+    status = models.CharField(
+        max_length=10,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.PAID,
+        db_index=True,
+    )
     paid_on = models.DateTimeField(default=timezone.now)
+    due_date = models.DateField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Payment"
@@ -279,4 +308,11 @@ class Payment(BaseModel):
         ordering = ["-paid_on"]
 
     def __str__(self):
-        return f"Payment {self.uuid} — {self.amount} ({self.mode})"
+        return f"Payment {self.invoice_number or self.uuid} — {self.amount} ({self.mode})"
+
+    def save(self, *args, **kwargs):
+        if not self.invoice_number:
+            self.invoice_number = (
+                f"INV-{timezone.now():%Y%m%d}-{self.uuid.hex[:6].upper()}"
+            )
+        super().save(*args, **kwargs)

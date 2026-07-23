@@ -14,12 +14,13 @@
 4. [Trainer Panel](#4-trainer-panel)
 5. [Member Panel](#5-member-panel)
 6. [Memberships](#6-memberships)
-7. [Payments (Legacy)](#7-payments-legacy)
+7. [Payments](#7-payments)
 8. [Member Payments (Phase 3)](#8-member-payments-phase-3)
 9. [Attendance](#9-attendance)
 10. [Reports](#10-reports)
 11. [Backup / Sync](#11-backup--sync)
 12. [Utility](#12-utility)
+13. [Music (Playlists & Songs)](#13-music-playlists--songs)
 
 ---
 
@@ -421,9 +422,9 @@ All endpoints under `/users/` support pagination, filtering, searching, and orde
 **Common query parameters:**
 
 | Param       | Description                                 |
-| ----------- | ------------------------------------------- |
+| ----------- | ------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `page`      | Page number                                 |
-| `page_size` | Results per page                            |Darth Vader's famous reveal to Luke is iconic. But which of these is the right one?
+| `page_size` | Results per page                            | Darth Vader's famous reveal to Luke is iconic. But which of these is the right one? |
 | `search`    | Search against name and phone fields        |
 | `ordering`  | Sort field (prefix with `-` for descending) |
 | `status`    | Filter by user status                       |
@@ -1683,16 +1684,45 @@ Soft-delete a membership record.
 
 ---
 
-## 7. Payments (Legacy)
+## 7. Payments
+
+Read-only endpoints for fetching payments **received by** the requesting user:
+
+- **Admin** — sees payments made by gym owners to the platform.
+- **Gym Owner** — sees payments made by their gym's members.
+
+Trainers and members have no access. Write operations (POST/PUT/DELETE) are not available on these endpoints.
 
 ### GET `/payments/`
 
-List payment records. Optionally filter by member using `?member=<uuid>`.
+List payments received by the requesting user, newest first (by `payment_date`).
 
-**Permission:** `IsAdminOrGymOwner`  
-**Filter fields:** `mode`, `membership`  
-**Query param:** `member` (UUID)  
-**Ordering fields:** `paid_on`, `created_at`
+**Permission:** `IsAdminOrGymOwner`
+
+**Query parameters:**
+
+| Param       | Type   | Required | Description                                                               |
+| ----------- | ------ | -------- | ------------------------------------------------------------------------- |
+| `search`    | string | No       | Case-insensitive partial match on payer name, gym name, or invoice number |
+| `status`    | string | No       | `paid` \| `pending` \| `overdue`                                          |
+| `page`      | int    | No       | Page number (default 1)                                                   |
+| `page_size` | int    | No       | Items per page (default 20, max 100)                                      |
+
+**Response fields:**
+
+| Field             | Type    | Description                                                      |
+| ----------------- | ------- | ---------------------------------------------------------------- |
+| `uuid`            | UUID    | Payment UUID                                                     |
+| `invoice_number`  | string  | Auto-generated invoice number (`INV-...`)                        |
+| `member_name`     | string  | Payer's full name (the member; in the Admin view, the gym owner) |
+| `member_phone`    | string  | Payer's phone number                                             |
+| `gym_name`        | string  | Name of the gym the payment belongs to (nullable)                |
+| `amount`          | decimal | Payment amount                                                   |
+| `status`          | string  | `paid` \| `pending` \| `overdue`                                 |
+| `method`          | string  | `cash` \| `online`                                               |
+| `membership_plan` | string  | Plan of the linked membership; `null` for gym-owner payments     |
+| `payment_date`    | string  | Date the payment was made (`YYYY-MM-DD`)                         |
+| `due_date`        | string  | Due date for pending payments (`YYYY-MM-DD`, nullable)           |
 
 #### Example JSON Response
 
@@ -1704,11 +1734,16 @@ List payment records. Optionally filter by member using `?member=<uuid>`.
   "data": [
     {
       "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
-      "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-      "amount": "1500.00",
-      "mode": "cash",
-      "paid_on": "2026-06-01T08:00:00Z",
-      "created_at": "2026-06-01T08:00:00Z"
+      "invoice_number": "INV-20260715-3F2A9C",
+      "member_name": "John Doe",
+      "member_phone": "9876543210",
+      "gym_name": "Iron Temple",
+      "amount": 1500.0,
+      "status": "paid",
+      "method": "cash",
+      "membership_plan": "Monthly",
+      "payment_date": "2026-07-01",
+      "due_date": null
     }
   ]
 }
@@ -1716,140 +1751,42 @@ List payment records. Optionally filter by member using `?member=<uuid>`.
 
 ---
 
-### POST `/payments/`
-
-Record a payment against an existing membership.
-
-**Permission:** `IsAdminOrGymOwner`
-
-#### Request
-
-| Field        | Type     | Required | Description                   |
-| ------------ | -------- | -------- | ----------------------------- |
-| `membership` | UUID     | Yes      | UUID of the linked membership |
-| `amount`     | decimal  | Yes      | Payment amount (must be > 0)  |
-| `mode`       | string   | Yes      | `cash` \| `online`            |
-| `paid_on`    | datetime | Yes      | Payment timestamp             |
-
-#### Example JSON Request
-
-```json
-{
-  "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "amount": "1500.00",
-  "mode": "cash",
-  "paid_on": "2026-06-01T08:00:00Z"
-}
-```
-
-#### Example JSON Response
-
-```json
-{
-  "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
-  "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "amount": "1500.00",
-  "mode": "cash",
-  "paid_on": "2026-06-01T08:00:00Z",
-  "created_at": "2026-06-30T10:00:00Z"
-}
-```
-
----
-
 ### GET `/payments/{uuid}/`
 
-Retrieve a specific payment record.
+Retrieve a single payment in detail. Same scoping as the list — a payment outside the requesting user's scope returns `404`.
 
 **Permission:** `IsAdminOrGymOwner`
+
+**Response fields:** all list fields plus:
+
+| Field        | Type     | Description                                    |
+| ------------ | -------- | ---------------------------------------------- |
+| `member`     | UUID     | UUID of the payer (member or gym owner)        |
+| `membership` | UUID     | UUID of the linked membership (`null` if none) |
+| `paid_on`    | datetime | Full payment timestamp                         |
+| `created_at` | datetime | Record creation timestamp                      |
+| `updated_at` | datetime | Record update timestamp                        |
 
 #### Example JSON Response
 
 ```json
 {
   "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
+  "invoice_number": "INV-20260715-3F2A9C",
+  "member_name": "John Doe",
+  "member_phone": "9876543210",
+  "gym_name": "Iron Temple",
+  "amount": 1500.0,
+  "status": "paid",
+  "method": "cash",
+  "membership_plan": "Monthly",
+  "payment_date": "2026-07-01",
+  "due_date": null,
+  "member": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
   "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "amount": "1500.00",
-  "mode": "cash",
-  "paid_on": "2026-06-01T08:00:00Z",
-  "created_at": "2026-06-01T08:00:00Z"
-}
-```
-
----
-
-### PUT `/payments/{uuid}/`
-
-Full update of a payment record.
-
-**Permission:** `IsAdminOrGymOwner`
-
-#### Example JSON Request
-
-```json
-{
-  "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "amount": "1600.00",
-  "mode": "online",
-  "paid_on": "2026-06-02T10:00:00Z"
-}
-```
-
-#### Example JSON Response
-
-```json
-{
-  "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
-  "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "amount": "1600.00",
-  "mode": "online",
-  "paid_on": "2026-06-02T10:00:00Z",
-  "created_at": "2026-06-01T08:00:00Z"
-}
-```
-
----
-
-### POST `/payments/{uuid}/update/`
-
-Partial update of a payment record.
-
-**Permission:** `IsAdminOrGymOwner`
-
-#### Example JSON Request
-
-```json
-{
-  "mode": "online"
-}
-```
-
-#### Example JSON Response
-
-```json
-{
-  "uuid": "d4e5f6a7-b8c9-0123-def0-234567890123",
-  "membership": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-  "amount": "1500.00",
-  "mode": "online",
-  "paid_on": "2026-06-01T08:00:00Z",
-  "created_at": "2026-06-01T08:00:00Z"
-}
-```
-
----
-
-### DELETE `/payments/{uuid}/`
-
-Soft-delete a payment record.
-
-**Permission:** `IsAdminOrGymOwner`
-
-#### Example JSON Response
-
-```json
-{
-  "detail": "Deleted successfully."
+  "paid_on": "2026-07-01T08:00:00Z",
+  "created_at": "2026-07-01T08:00:00Z",
+  "updated_at": "2026-07-01T08:00:00Z"
 }
 ```
 
@@ -2417,6 +2354,245 @@ Returns IP geolocation, browser, OS, and device information for the requesting c
 | ----------------- | -------------------------------------------------- |
 | `400 Bad Request` | Private/non-routable IP or geolocation unavailable |
 | `404 Not Found`   | No location data found for the given IP            |
+
+---
+
+## 13. Music (Playlists & Songs)
+
+Admin-managed music catalogue served to the Flutter app. The app ships a bundled
+(offline) catalogue with integer ids (`songs` `1..138`, `playlists` `1..7`); these
+endpoints let an admin add more. The backend owns the id space — bundled data is
+seeded into the DB, so admin-created rows continue from id `139` / `8` and never
+collide with the offline bundle.
+
+Every item carries `is_remote`:
+
+- `is_remote = false` — a bundled item; its `thumb`/`asset`/`icon`/`cover` are the
+  app's local `assets/...` paths.
+- `is_remote = true` — an admin-added item; its media fields are absolute download
+  URLs (`http://<host>/media/...`). The app shows a download button for these.
+
+Media types: images must be `.png`, audio must be `.opus`. Uploads use
+`multipart/form-data`. `color` is a hex string without `#` (e.g. `520102`).
+
+### GET `/api/music/songs/`
+
+List the full song catalogue (bundled + admin-added). Not paginated — `data` is the
+complete array, matching the app's `songs.json` shape plus `is_remote`.
+
+**Permission:** Any authenticated user
+
+#### Response (`data[]`)
+
+| Field       | Type    | Description                                             |
+| ----------- | ------- | ------------------------------------------------------- |
+| `id`        | integer | Song id (continues the bundled sequence)                |
+| `title`     | string  | Song title                                              |
+| `artist`    | string  | Artist name                                             |
+| `thumb`     | string  | `assets/...png` path (bundled) or absolute URL (remote) |
+| `asset`     | string  | `assets/...opus` path (bundled) or absolute URL (remote)|
+| `duration`  | integer | Length in seconds                                       |
+| `is_remote` | boolean | `false` = bundled, `true` = admin-added / downloadable  |
+
+#### Example JSON Response
+
+```json
+[
+  {
+    "id": 1,
+    "title": "Aarambh Hai Prachand",
+    "artist": "Piyush Mishra",
+    "thumb": "assets/audio-thumb/aarambh_hai_prachand.png",
+    "asset": "assets/audio-opus/aarambh_hai_prachand.opus",
+    "duration": 298,
+    "is_remote": false
+  },
+  {
+    "id": 139,
+    "title": "New Track",
+    "artist": "New Artist",
+    "thumb": "http://<host>/media/music/thumbs/new_track.png",
+    "asset": "http://<host>/media/music/audio/new_track.opus",
+    "duration": 210,
+    "is_remote": true
+  }
+]
+```
+
+---
+
+### POST `/api/music/songs/`
+
+Create a new song. The new `id` is assigned automatically (continues the sequence).
+
+**Permission:** `IsAdmin` · **Content-Type:** `multipart/form-data`
+
+#### Request
+
+| Field      | Type    | Required | Description                     |
+| ---------- | ------- | -------- | ------------------------------- |
+| `title`    | string  | Yes      | Song title                      |
+| `artist`   | string  | No       | Artist name                     |
+| `duration` | integer | Yes      | Length in seconds (client-sent) |
+| `thumb`    | file    | Yes      | `.png` thumbnail image          |
+| `asset`    | file    | Yes      | `.opus` audio file              |
+
+#### Example JSON Response
+
+```json
+{
+  "id": 139,
+  "title": "New Track",
+  "artist": "New Artist",
+  "thumb": "http://<host>/media/music/thumbs/new_track.png",
+  "asset": "http://<host>/media/music/audio/new_track.opus",
+  "duration": 210,
+  "is_remote": true
+}
+```
+
+**Error Responses:**
+
+| Status            | When                                                  |
+| ----------------- | ----------------------------------------------------- |
+| `400 Bad Request` | Missing required field, `thumb` not `.png`, or `asset` not `.opus` |
+| `403 Forbidden`   | Caller is not an admin                                |
+
+---
+
+### GET `/api/music/songs/{id}/`
+
+Retrieve a single song. **Permission:** Any authenticated user. Response shape is one song object (as above).
+
+---
+
+### PUT `/api/music/songs/{id}/`
+
+Full replace of a song. **Permission:** `IsAdmin` · `multipart/form-data`. Same fields as `POST`. Returns the updated song object.
+
+---
+
+### POST `/api/music/songs/{id}/update/`
+
+Partial update of a song (POST-not-PATCH convention). **Permission:** `IsAdmin` · `multipart/form-data`. Any subset of the create fields. Returns the updated song object.
+
+---
+
+### DELETE `/api/music/songs/{id}/`
+
+Soft-delete a song (hidden from lists; id is not reused). **Permission:** `IsAdmin`. Returns `HTTP 204 No Content`.
+
+---
+
+### GET `/api/music/playlists/`
+
+List the full playlist catalogue (bundled + admin-added). Not paginated — `data` is the complete array, matching the app's `playlists.json` shape plus `is_remote`.
+
+**Permission:** Any authenticated user
+
+#### Response (`data[]`)
+
+| Field       | Type            | Description                                             |
+| ----------- | --------------- | ------------------------------------------------------- |
+| `id`        | integer         | Playlist id (continues the bundled sequence)            |
+| `title`     | string          | Playlist title                                          |
+| `icon`      | string          | `assets/...png` path (bundled) or absolute URL (remote) |
+| `cover`     | string          | `assets/...png` path (bundled) or absolute URL (remote) |
+| `color`     | string          | Hex color without `#` (e.g. `520102`)                   |
+| `song_ids`  | array of integer | Ordered song ids in the playlist                       |
+| `is_remote` | boolean         | `false` = bundled, `true` = admin-added                 |
+
+#### Example JSON Response
+
+```json
+[
+  {
+    "id": 1,
+    "title": "Devotional",
+    "icon": "assets/playlist-thumb/devotional_icon.png",
+    "cover": "assets/playlist-thumb/devotional.png",
+    "color": "520102",
+    "song_ids": [32, 28, 7, 10, 25],
+    "is_remote": false
+  },
+  {
+    "id": 8,
+    "title": "My Mix",
+    "icon": "http://<host>/media/music/icons/my_mix_icon.png",
+    "cover": "http://<host>/media/music/covers/my_mix.png",
+    "color": "6A1B9A",
+    "song_ids": [1, 5, 139],
+    "is_remote": true
+  }
+]
+```
+
+---
+
+### POST `/api/music/playlists/`
+
+Create a new playlist. The new `id` is assigned automatically. `song_ids` is
+optional — a playlist can be created empty and have songs added later; when
+provided it may mix bundled and admin-added song ids, and ordering is preserved.
+
+**Permission:** `IsAdmin` · **Content-Type:** `multipart/form-data`
+
+#### Request
+
+| Field      | Type             | Required | Description                                           |
+| ---------- | ---------------- | -------- | ----------------------------------------------------- |
+| `title`    | string           | Yes      | Playlist title                                        |
+| `icon`     | file             | Yes      | `.png` icon image                                     |
+| `cover`    | file             | Yes      | `.png` cover image                                    |
+| `color`    | string           | No       | Hex color without `#` (e.g. `520102`)                 |
+| `song_ids` | array of integer | No       | Ordered list of existing song ids (bundled or remote); omit to create an empty playlist |
+
+For `multipart/form-data`, send `song_ids` as repeated fields (`song_ids=1`, `song_ids=5`, …).
+
+#### Example JSON Response
+
+```json
+{
+  "id": 8,
+  "title": "My Mix",
+  "icon": "http://<host>/media/music/icons/my_mix_icon.png",
+  "cover": "http://<host>/media/music/covers/my_mix.png",
+  "color": "6A1B9A",
+  "song_ids": [1, 5, 139],
+  "is_remote": true
+}
+```
+
+**Error Responses:**
+
+| Status            | When                                                          |
+| ----------------- | ------------------------------------------------------------ |
+| `400 Bad Request` | Missing field, non-`.png` image, or `song_ids` referencing an unknown/deleted song |
+| `403 Forbidden`   | Caller is not an admin                                        |
+
+---
+
+### GET `/api/music/playlists/{id}/`
+
+Retrieve a single playlist. **Permission:** Any authenticated user. Response is one playlist object (as above).
+
+---
+
+### PUT `/api/music/playlists/{id}/`
+
+Full replace of a playlist. **Permission:** `IsAdmin` · `multipart/form-data`. Same fields as `POST`; `song_ids` replaces the full ordered set. Returns the updated playlist object.
+
+---
+
+### POST `/api/music/playlists/{id}/update/`
+
+Partial update of a playlist (POST-not-PATCH convention). **Permission:** `IsAdmin` · `multipart/form-data`. Any subset of the create fields; if `song_ids` is provided it replaces the full ordered set. Returns the updated playlist object.
+
+---
+
+### DELETE `/api/music/playlists/{id}/`
+
+Soft-delete a playlist (hidden from lists; id is not reused). **Permission:** `IsAdmin`. Returns `HTTP 204 No Content`.
 
 ---
 

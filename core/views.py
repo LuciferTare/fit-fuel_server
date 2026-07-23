@@ -39,6 +39,11 @@ class BaseModelViewSet(viewsets.ModelViewSet):
         return self.partial_update(request, *args, **kwargs)
 
 
+class BaseReadOnlyModelViewSet(viewsets.ReadOnlyModelViewSet):
+    renderer_classes = (renderers.ResponseRenderer,)
+    http_method_names = ["get", "head", "options"]
+
+
 class NoAuthNoPermMixin:
     authentication_classes = []
     permission_classes = []

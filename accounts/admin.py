@@ -183,8 +183,8 @@ class MembershipAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ["uuid", "membership", "amount", "mode", "paid_on", "created_at"]
-    list_filter = ["mode"]
-    search_fields = ["membership__member__phone_number", "membership__member__first_name"]
+    list_display = ["invoice_number", "paid_by", "amount", "mode", "status", "paid_on", "due_date"]
+    list_filter = ["mode", "status"]
+    search_fields = ["invoice_number", "paid_by__phone_number", "paid_by__first_name", "paid_by__last_name"]
     ordering = ["-paid_on"]
-    readonly_fields = ["uuid", "created_at", "updated_at", "created_by", "updated_by", "deleted_at"]
+    readonly_fields = ["uuid", "invoice_number", "created_at", "updated_at", "created_by", "updated_by", "deleted_at"]
