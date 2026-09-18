@@ -1,0 +1,86 @@
+[
+  {
+    "id": 1,
+    "title": "Devotional",
+    "icon": "assets/playlist-thumb/devotional_icon.png",
+    "cover": "assets/playlist-thumb/devotional.png",
+    "color": "520102",
+    "song_ids": [
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+      22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37
+    ]
+  },
+  {
+    "id": 2,
+    "title": "Maharaj",
+    "icon": "assets/playlist-thumb/maharaj_icon.png",
+    "cover": "assets/playlist-thumb/maharaj.png",
+    "color": "FF671F",
+    "song_ids": [38, 39, 40, 25, 41, 42, 43, 44, 45, 46, 47, 48, 49]
+  },
+  {
+    "id": 3,
+    "title": "No Excuses",
+    "icon": "assets/playlist-thumb/no_excuses_icon.png",
+    "cover": "assets/playlist-thumb/no_excuses.png",
+    "color": "C58B12",
+    "song_ids": [50, 51, 52, 53]
+  },
+  {
+    "id": 4,
+    "title": "Punjabis",
+    "icon": "assets/playlist-thumb/punjabi_icon.png",
+    "cover": "assets/playlist-thumb/punjabi.png",
+    "color": "FFC72C",
+    "song_ids": [
+      54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71,
+      72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
+      90, 91, 92, 93
+    ]
+  },
+  {
+    "id": 5,
+    "title": "Bad*ss BGMs",
+    "icon": "assets/playlist-thumb/badass_bgm_icon.png",
+    "cover": "assets/playlist-thumb/badass_bgm.png",
+    "color": "0D3B66",
+    "song_ids": [
+      94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
+      110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124
+    ]
+  },
+  {
+    "id": 6,
+    "title": "Sambata Don",
+    "icon": "assets/playlist-thumb/sambata_icon.png",
+    "cover": "assets/playlist-thumb/sambata.png",
+    "color": "4B1D5A",
+    "song_ids": [125, 126, 127, 128, 129, 130, 131, 132]
+  },
+  {
+    "id": 7,
+    "title": "Dr. Divine",
+    "icon": "assets/playlist-thumb/divine_icon.png",
+    "cover": "assets/playlist-thumb/divine.png",
+    "color": "6A1B9A",
+    "song_ids": [133, 134, 135, 136, 137, 138, 139, 140]
+  },
+  {
+    "id": 8,
+    "title": "Ustad Nusrat Fateh Ali Khan",
+    "icon": "assets/playlist-thumb/ustad_nfak_icon.png",
+    "cover": "assets/playlist-thumb/ustad_nfak.png",
+    "color": "0B5D4B",
+    "song_ids": [141, 142, 143, 144, 145, 146, 147, 148, 149, 150]
+  },
+  {
+    "id": 9,
+    "title": "Aditya Rikhari",
+    "icon": "assets/playlist-thumb/aditya_rikhari_icon.png",
+    "cover": "assets/playlist-thumb/aditya_rikhari.png",
+    "color": "C48A52",
+    "song_ids": [
+      151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165
+    ]
+  }
+]

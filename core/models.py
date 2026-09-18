@@ -45,3 +45,19 @@ class BaseModel(models.Model):
         if deleted_by:
             self.updated_by = deleted_by
         self.save(update_fields=["is_deleted", "deleted_at", "updated_by", "updated_at"])
+
+
+class DailyRequestCount(models.Model):
+    """One row per calendar date, incremented per-request by
+    RequestCounterMiddleware — backs the admin dashboard's "API Requests
+    Today" card. Not a BaseModel: this is an internal counter, not a
+    business record (no uuid/audit trail needed)."""
+
+    date = models.DateField(unique=True, db_index=True)
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "daily_request_counts"
+
+    def __str__(self):
+        return f"{self.date}: {self.count}"

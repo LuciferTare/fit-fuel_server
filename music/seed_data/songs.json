@@ -1,0 +1,1322 @@
+[
+  {
+    "id": 1,
+    "title": "Sukhharta Dukhharta",
+    "artist": "Amitabh Bachchan",
+    "thumb": "assets/audio-thumb/sukhharta_dukhharta.png",
+    "asset": "assets/audio-opus/sukhharta_dukhharta.opus",
+    "duration": 122
+  },
+  {
+    "id": 2,
+    "title": "Shendur Laal Chadhayo",
+    "artist": "Ravindra Sathe",
+    "thumb": "assets/audio-thumb/shendur_laal_chadhayo.png",
+    "asset": "assets/audio-opus/shendur_laal_chadhayo.opus",
+    "duration": 192
+  },
+  {
+    "id": 3,
+    "title": "Bappa",
+    "artist": "Vishal Dadlani",
+    "thumb": "assets/audio-thumb/bappa.png",
+    "asset": "assets/audio-opus/bappa.opus",
+    "duration": 180
+  },
+  {
+    "id": 4,
+    "title": "Hey Ganaraya",
+    "artist": "Divya Kumar",
+    "thumb": "assets/audio-thumb/hey_ganaraya.png",
+    "asset": "assets/audio-opus/hey_ganaraya.opus",
+    "duration": 255
+  },
+  {
+    "id": 5,
+    "title": "Shambhu Sutaya",
+    "artist": "Shankar Mahadevan, Vishal Dadlani",
+    "thumb": "assets/audio-thumb/abcd.png",
+    "asset": "assets/audio-opus/shambhu_sutaya.opus",
+    "duration": 283
+  },
+  {
+    "id": 6,
+    "title": "Deva Shree Ganesha",
+    "artist": "Ajay Gogavale",
+    "thumb": "assets/audio-thumb/deva_shree_ganesha.png",
+    "asset": "assets/audio-opus/deva_shree_ganesha.opus",
+    "duration": 331
+  },
+  {
+    "id": 7,
+    "title": "Tuch Maajhi Aai Devaa",
+    "artist": "Dnyaneshwar Meshram, Swapnil Bandodkar, Avadhoot Gupte",
+    "thumb": "assets/audio-thumb/tuch_maajhi_aai_devaa.png",
+    "asset": "assets/audio-opus/tuch_maajhi_aai_devaa.opus",
+    "duration": 236
+  },
+  {
+    "id": 8,
+    "title": "Sadda Dil Vi Tu",
+    "artist": "Sachin-Jigar, Hard Kaur,  Mayur Puri",
+    "thumb": "assets/audio-thumb/abcd.png",
+    "asset": "assets/audio-opus/sadda_dil_vi_tu.opus",
+    "duration": 326
+  },
+  {
+    "id": 9,
+    "title": "Gajanana",
+    "artist": "Sukhwinder Singh",
+    "thumb": "assets/audio-thumb/gajanana.png",
+    "asset": "assets/audio-opus/gajanana.opus",
+    "duration": 221
+  },
+  {
+    "id": 10,
+    "title": "Morya Morya",
+    "artist": "Ajay-Atul",
+    "thumb": "assets/audio-thumb/morya_morya.png",
+    "asset": "assets/audio-opus/morya_morya.opus",
+    "duration": 206
+  },
+  {
+    "id": 11,
+    "title": "Aathma Raama",
+    "artist": "Brodha V",
+    "thumb": "assets/audio-thumb/aathma_raama.png",
+    "asset": "assets/audio-opus/aathma_raama.opus",
+    "duration": 231
+  },
+  {
+    "id": 12,
+    "title": "Humare Sath Shri Raghunath",
+    "artist": "Unknown",
+    "thumb": "assets/audio-thumb/humare_sath_shri_raghunath.png",
+    "asset": "assets/audio-opus/humare_sath_shri_raghunath.opus",
+    "duration": 273
+  },
+  {
+    "id": 13,
+    "title": "Ram Darshan",
+    "artist": "Narci",
+    "thumb": "assets/audio-thumb/ram_darshan.png",
+    "asset": "assets/audio-opus/ram_darshan.opus",
+    "duration": 309
+  },
+  {
+    "id": 14,
+    "title": "Ram Mere Sage",
+    "artist": "Narci",
+    "thumb": "assets/audio-thumb/ram_mere_sage.png",
+    "asset": "assets/audio-opus/ram_mere_sage.opus",
+    "duration": 194
+  },
+  {
+    "id": 15,
+    "title": "Ram Tera Aasra",
+    "artist": "Narci",
+    "thumb": "assets/audio-thumb/ram_tera_aasra.png",
+    "asset": "assets/audio-opus/ram_tera_aasra.opus",
+    "duration": 280
+  },
+  {
+    "id": 16,
+    "title": "Aarambh Hai Prachand",
+    "artist": "Piyush Mishra",
+    "thumb": "assets/audio-thumb/aarambh_hai_prachand.png",
+    "asset": "assets/audio-opus/aarambh_hai_prachand.opus",
+    "duration": 298
+  },
+  {
+    "id": 17,
+    "title": "Maay Bhavani",
+    "artist": "Sukhwinder Singh, Shreya Ghoshal",
+    "thumb": "assets/audio-thumb/maay_bhavani.png",
+    "asset": "assets/audio-opus/maay_bhavani.opus",
+    "duration": 251
+  },
+  {
+    "id": 18,
+    "title": "Mauli Mauli",
+    "artist": "Ajay Gogavale",
+    "thumb": "assets/audio-thumb/mauli_mauli.png",
+    "asset": "assets/audio-opus/mauli_mauli.opus",
+    "duration": 309
+  },
+  {
+    "id": 19,
+    "title": "Ashtami",
+    "artist": "Adarsh Shinde",
+    "thumb": "assets/audio-thumb/ashtami.png",
+    "asset": "assets/audio-opus/ashtami.opus",
+    "duration": 308
+  },
+  {
+    "id": 20,
+    "title": "Lallati Bhandar",
+    "artist": "Ajay-Atul, Ajay Gogavale",
+    "thumb": "assets/audio-thumb/lallati_bhandar.png",
+    "asset": "assets/audio-opus/lallati_bhandar.opus",
+    "duration": 301
+  },
+  {
+    "id": 21,
+    "title": "Krishna ki chetavani",
+    "artist": "Agam Aggarwal",
+    "thumb": "assets/audio-thumb/krishna_ki_chetavani.png",
+    "asset": "assets/audio-opus/krishna_ki_chetavani.opus",
+    "duration": 282
+  },
+  {
+    "id": 22,
+    "title": "Krishna Trance",
+    "artist": "Kaala Bhairava",
+    "thumb": "assets/audio-thumb/krishna_trance.png",
+    "asset": "assets/audio-opus/krishna_trance.opus",
+    "duration": 179
+  },
+  {
+    "id": 23,
+    "title": "Huppa Huiyya Jai Bajranga",
+    "artist": "Swapnil Bandodkar",
+    "thumb": "assets/audio-thumb/huppa_huiyya.png",
+    "asset": "assets/audio-opus/huppa_huiyya.opus",
+    "duration": 505
+  },
+  {
+    "id": 24,
+    "title": "Hanuman Chalisa",
+    "artist": "Kaala Bhairava, P V N S Rohit, Manoj Sharma, Arun Kaundinya, Hymath Mohammed, Lokeshwar, Ravi Prakash, Sai Saket",
+    "thumb": "assets/audio-thumb/hanuman_chalisa.png",
+    "asset": "assets/audio-opus/hanuman_chalisa.opus",
+    "duration": 400
+  },
+  {
+    "id": 25,
+    "title": "Jai Bhavani Jai Shivaji",
+    "artist": "Ajay-Atul",
+    "thumb": "assets/audio-thumb/jai_bhavani_jai_shivaji.png",
+    "asset": "assets/audio-opus/jai_bhavani_jai_shivaji.opus",
+    "duration": 122
+  },
+  {
+    "id": 26,
+    "title": "Shankara Re Shankara",
+    "artist": "Mehul Vyas, Adarsh Shinde",
+    "thumb": "assets/audio-thumb/shankara_re_shankara.png",
+    "asset": "assets/audio-opus/shankara_re_shankara.opus",
+    "duration": 221
+  },
+  {
+    "id": 27,
+    "title": "Mann Mein Shiva",
+    "artist": "Kunal Ganjawala, Deepanshi Nagar, Padmanabh Gaikwad",
+    "thumb": "assets/audio-thumb/mann_mein_shiva.png",
+    "asset": "assets/audio-opus/mann_mein_shiva.opus",
+    "duration": 228
+  },
+  {
+    "id": 28,
+    "title": "Kalabhairava Ashtakam",
+    "artist": "Shankar Mahadevan",
+    "thumb": "assets/audio-thumb/kalabhairava_ashtakam.png",
+    "asset": "assets/audio-opus/kalabhairava_ashtakam.opus",
+    "duration": 275
+  },
+  {
+    "id": 29,
+    "title": "Shankar Shiv Bhole Umapati Mahadev",
+    "artist": "Mavelle, Hitesh Shekhawat",
+    "thumb": "assets/audio-thumb/shankar_shiv_bhole_umapati_mahadev.png",
+    "asset": "assets/audio-opus/shankar_shiv_bhole_umapati_mahadev.opus",
+    "duration": 297
+  },
+  {
+    "id": 30,
+    "title": "Jaikal Mahakal",
+    "artist": "Amit Trivedi, Suhas Sawant",
+    "thumb": "assets/audio-thumb/jaikal_mahakal.png",
+    "asset": "assets/audio-opus/jaikal_mahakal.opus",
+    "duration": 257
+  },
+  {
+    "id": 31,
+    "title": "Babam Bam",
+    "artist": "Kailash Kher",
+    "thumb": "assets/audio-thumb/babam_bam.png",
+    "asset": "assets/audio-opus/babam_bam.opus",
+    "duration": 252
+  },
+  {
+    "id": 32,
+    "title": "Babam Bam",
+    "artist": "Paradox",
+    "thumb": "assets/audio-thumb/babam_bam_paradox.png",
+    "asset": "assets/audio-opus/babam_bam_paradox.opus",
+    "duration": 133
+  },
+  {
+    "id": 33,
+    "title": "Bam Lehri",
+    "artist": "Rhymster",
+    "thumb": "assets/audio-thumb/bam_lehri.png",
+    "asset": "assets/audio-opus/bam_lehri.opus",
+    "duration": 124
+  },
+  {
+    "id": 34,
+    "title": "Alakh Niranjan",
+    "artist": "Aditya",
+    "thumb": "assets/audio-thumb/alakh_niranjan.png",
+    "asset": "assets/audio-opus/alakh_niranjan.opus",
+    "duration": 239
+  },
+  {
+    "id": 35,
+    "title": "Shiv Tandav Stotram",
+    "artist": "Armonian",
+    "thumb": "assets/audio-thumb/shiv_tandav_stotram_armonian.png",
+    "asset": "assets/audio-opus/shiv_tandav_stotram_armonian.opus",
+    "duration": 317
+  },
+  {
+    "id": 36,
+    "title": "Shiv Tandav Stotram(Har Har Shiv Shankar)",
+    "artist": "Sachet Tandon, Parampara Tandon",
+    "thumb": "assets/audio-thumb/shiv_tandav_stotram_har_har_shiv_shankar.png",
+    "asset": "assets/audio-opus/shiv_tandav_stotram_har_har_shiv_shankar.opus",
+    "duration": 331
+  },
+  {
+    "id": 37,
+    "title": "Shiv Tandav Stotram",
+    "artist": "Ashutosh Rana",
+    "thumb": "assets/audio-thumb/shiv_tandav_stotram.png",
+    "asset": "assets/audio-opus/shiv_tandav_stotram.opus",
+    "duration": 477
+  },
+  {
+    "id": 38,
+    "title": "Maharajachi Kirti Befam (Powada)",
+    "artist": "Nandesh Umap",
+    "thumb": "assets/audio-thumb/me_shivajiraj_bhosale_boltoy.png",
+    "asset": "assets/audio-opus/maharajachi_kirti_befam_powada.opus",
+    "duration": 440
+  },
+  {
+    "id": 39,
+    "title": "Raja Aala",
+    "artist": "Devdutta Manisha Baji, Avadhoot Gupte",
+    "thumb": "assets/audio-thumb/pawankhind.png",
+    "asset": "assets/audio-opus/raja_aala.opus",
+    "duration": 198
+  },
+  {
+    "id": 40,
+    "title": "Yugat Mandali",
+    "artist": "Devdutta Manisha Baji, Avadhoot Gandhi, Haridas Shinde",
+    "thumb": "assets/audio-thumb/pawankhind.png",
+    "asset": "assets/audio-opus/yugat_mandali.opus",
+    "duration": 196
+  },
+  {
+    "id": 41,
+    "title": "Chakar Shivbacha Honar",
+    "artist": "Padmanabh Gaikwad, Avadhoot Gandhi",
+    "thumb": "assets/audio-thumb/pawankhind.png",
+    "asset": "assets/audio-opus/chakar_shivbacha_honar.opus",
+    "duration": 349
+  },
+  {
+    "id": 42,
+    "title": "O' Raaje",
+    "artist": "Sukhwinder Singh",
+    "thumb": "assets/audio-thumb/me_shivajiraj_bhosale_boltoy.png",
+    "asset": "assets/audio-opus/o_raaje.opus",
+    "duration": 343
+  },
+  {
+    "id": 43,
+    "title": "Aale Marathe",
+    "artist": "Devdutta Manisha Baji, Suvarna Rathod",
+    "thumb": "assets/audio-thumb/aale_marathe.png",
+    "asset": "assets/audio-opus/aale_marathe.opus",
+    "duration": 285
+  },
+  {
+    "id": 44,
+    "title": "Maval Jaga Zala Ra",
+    "artist": "Devdutta Manisha Baji, Avadhoot Gandhi",
+    "thumb": "assets/audio-thumb/maval_jaga_zala_ra.png",
+    "asset": "assets/audio-opus/maval_jaga_zala_ra.opus",
+    "duration": 270
+  },
+  {
+    "id": 45,
+    "title": "Shivba Raja",
+    "artist": "Avadhoot Gandhi, Devdutta Manisha Baji",
+    "thumb": "assets/audio-thumb/shivba_raja.png",
+    "asset": "assets/audio-opus/shivba_raja.opus",
+    "duration": 233
+  },
+  {
+    "id": 46,
+    "title": "Shwasat Raja Dhyasat Raja",
+    "artist": "Devdutta Manisha Baji, Avadhoot Gandhi",
+    "thumb": "assets/audio-thumb/pawankhind.png",
+    "asset": "assets/audio-opus/shwasat_raja_dhyasat_raja.opus",
+    "duration": 126
+  },
+  {
+    "id": 47,
+    "title": "Shivaba Malhari",
+    "artist": "Pravin Tarde, Astad Kale, Ajay Purkar, Harish Dud hade, Ankit Mohan",
+    "thumb": "assets/audio-thumb/shivaba_malhari.png",
+    "asset": "assets/audio-opus/shivaba_malhari.opus",
+    "duration": 130
+  },
+  {
+    "id": 48,
+    "title": "Rani Fadakti Lakhon Jhende",
+    "artist": "Ashutosh Mungle, Ajay Purkar",
+    "thumb": "assets/audio-thumb/rani_fadakti_lakhon_jhende.png",
+    "asset": "assets/audio-opus/rani_fadakti_lakhon_jhende.opus",
+    "duration": 211
+  },
+  {
+    "id": 49,
+    "title": "Majhya Raja Ra",
+    "artist": "Adarsh Shinde",
+    "thumb": "assets/audio-thumb/majhya_raja_ra.png",
+    "asset": "assets/audio-opus/majhya_raja_ra.opus",
+    "duration": 203
+  },
+  {
+    "id": 50,
+    "title": "You Got This",
+    "artist": "Fotty Seven",
+    "thumb": "assets/audio-thumb/you_got_this.png",
+    "asset": "assets/audio-opus/you_got_this.opus",
+    "duration": 247
+  },
+  {
+    "id": 51,
+    "title": "Never Back Down",
+    "artist": "Raftaar",
+    "thumb": "assets/audio-thumb/never_back_down.png",
+    "asset": "assets/audio-opus/never_back_down.opus",
+    "duration": 178
+  },
+  {
+    "id": 52,
+    "title": "Apna Time Aayega",
+    "artist": "Divine, Ranveer Singh, Dub Sharma",
+    "thumb": "assets/audio-thumb/gullyboy.png",
+    "asset": "assets/audio-opus/apna_time_aayega.opus",
+    "duration": 119
+  },
+  {
+    "id": 53,
+    "title": "Azadi",
+    "artist": "Dub Sharma, Divine",
+    "thumb": "assets/audio-thumb/gullyboy.png",
+    "asset": "assets/audio-opus/azadi.opus",
+    "duration": 150
+  },
+  {
+    "id": 54,
+    "title": "Khayaal",
+    "artist": "Talwiinder, NDS",
+    "thumb": "assets/audio-thumb/khayaal.png",
+    "asset": "assets/audio-opus/khayaal.opus",
+    "duration": 162
+  },
+  {
+    "id": 55,
+    "title": "Tere Te",
+    "artist": "AP Dhillon, Gurinder Gill",
+    "thumb": "assets/audio-thumb/tere_te.png",
+    "asset": "assets/audio-opus/tere_te.opus",
+    "duration": 114
+  },
+  {
+    "id": 56,
+    "title": "Jee Ni Lagda",
+    "artist": "Karan Aujla, Ikky",
+    "thumb": "assets/audio-thumb/karan_aujla.png",
+    "asset": "assets/audio-opus/jee_ni_lagda.opus",
+    "duration": 139
+  },
+  {
+    "id": 57,
+    "title": "For A Reason",
+    "artist": "Karan Aujla, Ikky",
+    "thumb": "assets/audio-thumb/karan_aujla_1.png",
+    "asset": "assets/audio-opus/for_a_reason.opus",
+    "duration": 180
+  },
+  {
+    "id": 58,
+    "title": "Excuses",
+    "artist": "AP Dhillon, Gurinder Gill, Intense",
+    "thumb": "assets/audio-thumb/excuses.png",
+    "asset": "assets/audio-opus/excuses.opus",
+    "duration": 176
+  },
+  {
+    "id": 59,
+    "title": "Softly",
+    "artist": "Karan Aujla, Ikky",
+    "thumb": "assets/audio-thumb/karan_aujla.png",
+    "asset": "assets/audio-opus/softly.opus",
+    "duration": 155
+  },
+  {
+    "id": 60,
+    "title": "Admirin You",
+    "artist": "Karan Aujla, Ikky, Preston Pabo",
+    "thumb": "assets/audio-thumb/karan_aujla.png",
+    "asset": "assets/audio-opus/admirin_you.opus",
+    "duration": 215
+  },
+  {
+    "id": 61,
+    "title": "Her",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/her.png",
+    "asset": "assets/audio-opus/her.opus",
+    "duration": 154
+  },
+  {
+    "id": 62,
+    "title": "I Really Do",
+    "artist": "Karan Aujla, Ikky",
+    "thumb": "assets/audio-thumb/karan_aujla_1.png",
+    "asset": "assets/audio-opus/i_really_do.opus",
+    "duration": 194
+  },
+  {
+    "id": 63,
+    "title": "Brown Munde",
+    "artist": "AP Dhillon, Gminxr, Gurinder Gill, Shinda Kahlon",
+    "thumb": "assets/audio-thumb/brown_munde.png",
+    "asset": "assets/audio-opus/brown_munde.opus",
+    "duration": 254
+  },
+  {
+    "id": 64,
+    "title": "Insane",
+    "artist": "AP Dhillon, Shinda Kahlon, Gurinder Gill, Gminxr",
+    "thumb": "assets/audio-thumb/insane.png",
+    "asset": "assets/audio-opus/insane.opus",
+    "duration": 206
+  },
+  {
+    "id": 65,
+    "title": "No Love",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/no_love.png",
+    "asset": "assets/audio-opus/no_love.opus",
+    "duration": 170
+  },
+  {
+    "id": 66,
+    "title": "Lemonade",
+    "artist": "Diljit Dosanjh",
+    "thumb": "assets/audio-thumb/lemonade.png",
+    "asset": "assets/audio-opus/lemonade.opus",
+    "duration": 167
+  },
+  {
+    "id": 67,
+    "title": "Bandana",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/bandana.png",
+    "asset": "assets/audio-opus/bandana.opus",
+    "duration": 155
+  },
+  {
+    "id": 68,
+    "title": "Russian Bandana",
+    "artist": "Dhanda Nyoliwala",
+    "thumb": "assets/audio-thumb/russian_bandana.png",
+    "asset": "assets/audio-opus/russian_bandana.opus",
+    "duration": 197
+  },
+  {
+    "id": 69,
+    "title": "Wavy",
+    "artist": "Karan Aujla, Jay Trak",
+    "thumb": "assets/audio-thumb/wavy.png",
+    "asset": "assets/audio-opus/wavy.opus",
+    "duration": 161
+  },
+  {
+    "id": 70,
+    "title": "Dior",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/shubh.png",
+    "asset": "assets/audio-opus/dior.opus",
+    "duration": 139
+  },
+  {
+    "id": 71,
+    "title": "Droptop",
+    "artist": "AP Dhillon, Gurinder Gill, Gminxr",
+    "thumb": "assets/audio-thumb/droptop.png",
+    "asset": "assets/audio-opus/droptop.opus",
+    "duration": 141
+  },
+  {
+    "id": 72,
+    "title": "On Top",
+    "artist": "Karan Aujla",
+    "thumb": "assets/audio-thumb/on_top.png",
+    "asset": "assets/audio-opus/on_top.opus",
+    "duration": 183
+  },
+  {
+    "id": 73,
+    "title": "Cheques",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/shubh.png",
+    "asset": "assets/audio-opus/cheques.opus",
+    "duration": 184
+  },
+  {
+    "id": 74,
+    "title": "Baller",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/baller.png",
+    "asset": "assets/audio-opus/baller.opus",
+    "duration": 148
+  },
+  {
+    "id": 75,
+    "title": "Born To Shine",
+    "artist": "Diljit Dosanjh",
+    "thumb": "assets/audio-thumb/diljit_dosanjh.png",
+    "asset": "assets/audio-opus/born_to_shine.opus",
+    "duration": 213
+  },
+  {
+    "id": 76,
+    "title": "Supreme",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/supreme.png",
+    "asset": "assets/audio-opus/supreme.opus",
+    "duration": 178
+  },
+  {
+    "id": 77,
+    "title": "Aura",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/aura.png",
+    "asset": "assets/audio-opus/aura.opus",
+    "duration": 166
+  },
+  {
+    "id": 78,
+    "title": "Bachke Bachke",
+    "artist": "Karan Aujla, Ikky, Yarah",
+    "thumb": "assets/audio-thumb/karan_aujla.png",
+    "asset": "assets/audio-opus/bachke_bachke.opus",
+    "duration": 210
+  },
+  {
+    "id": 79,
+    "title": "52 Bars",
+    "artist": "Karan Aujla, Ikky",
+    "thumb": "assets/audio-thumb/52_bars.png",
+    "asset": "assets/audio-opus/52_bars.opus",
+    "duration": 214
+  },
+  {
+    "id": 80,
+    "title": "Antidote",
+    "artist": "Karan Aujla",
+    "thumb": "assets/audio-thumb/antidote.png",
+    "asset": "assets/audio-opus/antidote.opus",
+    "duration": 187
+  },
+  {
+    "id": 81,
+    "title": "Gangsta",
+    "artist": "Karan Aujla, YG",
+    "thumb": "assets/audio-thumb/gangsta.png",
+    "asset": "assets/audio-opus/gangsta.opus",
+    "duration": 190
+  },
+  {
+    "id": 82,
+    "title": "King Shit",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/king_shit.png",
+    "asset": "assets/audio-opus/king_shit.opus",
+    "duration": 227
+  },
+  {
+    "id": 83,
+    "title": "Lalkara",
+    "artist": "Diljit Dosanjh, Intense, Sultaan",
+    "thumb": "assets/audio-thumb/lalkara.png",
+    "asset": "assets/audio-opus/lalkara.opus",
+    "duration": 161
+  },
+  {
+    "id": 84,
+    "title": "G.O.A.T.",
+    "artist": "Diljit Dosanjh",
+    "thumb": "assets/audio-thumb/diljit_dosanjh.png",
+    "asset": "assets/audio-opus/g_o_a_t.opus",
+    "duration": 224
+  },
+  {
+    "id": 85,
+    "title": "OG",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/shubh.png",
+    "asset": "assets/audio-opus/og.opus",
+    "duration": 197
+  },
+  {
+    "id": 86,
+    "title": "MVP",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/mvp.png",
+    "asset": "assets/audio-opus/mvp.opus",
+    "duration": 197
+  },
+  {
+    "id": 87,
+    "title": "Old Money",
+    "artist": "AP Dhillon",
+    "thumb": "assets/audio-thumb/old_money.png",
+    "asset": "assets/audio-opus/old_money.opus",
+    "duration": 128
+  },
+  {
+    "id": 88,
+    "title": "One Love",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/one_love.png",
+    "asset": "assets/audio-opus/one_love.opus",
+    "duration": 159
+  },
+  {
+    "id": 89,
+    "title": "We Rollin",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/we_rollin.png",
+    "asset": "assets/audio-opus/we_rollin.opus",
+    "duration": 199
+  },
+  {
+    "id": 90,
+    "title": "Still Rollin",
+    "artist": "Shubh",
+    "thumb": "assets/audio-thumb/shubh.png",
+    "asset": "assets/audio-opus/still_rollin.opus",
+    "duration": 175
+  },
+  {
+    "id": 91,
+    "title": "Winning Speech",
+    "artist": "Karan Aujla, Seshnolan",
+    "thumb": "assets/audio-thumb/winning_speech.png",
+    "asset": "assets/audio-opus/winning_speech.opus",
+    "duration": 217
+  },
+  {
+    "id": 92,
+    "title": "True Stories",
+    "artist": "AP Dhillon, Shinda Kahlon",
+    "thumb": "assets/audio-thumb/true_stories.png",
+    "asset": "assets/audio-opus/true_stories.opus",
+    "duration": 118
+  },
+  {
+    "id": 93,
+    "title": "STFU",
+    "artist": "AP Dhillon, Shinda Kahlon",
+    "thumb": "assets/audio-thumb/stfu.png",
+    "asset": "assets/audio-opus/stfu.opus",
+    "duration": 175
+  },
+  {
+    "id": 94,
+    "title": "Bad Eyes",
+    "artist": "Anirudh Ravichander",
+    "thumb": null,
+    "asset": "assets/audio-opus/bad_eyes.opus",
+    "duration": 87
+  },
+  {
+    "id": 95,
+    "title": "Dilli's Swag",
+    "artist": "Sam C.S.",
+    "thumb": "assets/audio-thumb/kaithi.png",
+    "asset": "assets/audio-opus/dilli_s_swag.opus",
+    "duration": 50
+  },
+  {
+    "id": 96,
+    "title": "Muthuvel Pandian Arrives",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/jailer.png",
+    "asset": "assets/audio-opus/muthuvel_pandian_arrives.opus",
+    "duration": 100
+  },
+  {
+    "id": 97,
+    "title": "Alappara Theme",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/jailer.png",
+    "asset": "assets/audio-opus/alappara_theme.opus",
+    "duration": 78
+  },
+  {
+    "id": 98,
+    "title": "Jailer Drill Theme",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/jailer.png",
+    "asset": "assets/audio-opus/jailer_drill_theme.opus",
+    "duration": 43
+  },
+  {
+    "id": 99,
+    "title": "Veeraraghavan",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/beast.png",
+    "asset": "assets/audio-opus/veeraraghavan.opus",
+    "duration": 110
+  },
+  {
+    "id": 100,
+    "title": "Once Upon A Time",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/vikram.png",
+    "asset": "assets/audio-opus/once_upon_a_time.opus",
+    "duration": 144
+  },
+  {
+    "id": 101,
+    "title": "Vikram Theme",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/vikram.png",
+    "asset": "assets/audio-opus/vikram_theme.opus",
+    "duration": 217
+  },
+  {
+    "id": 102,
+    "title": "Sandhanam Theme",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/vikram.png",
+    "asset": "assets/audio-opus/sandhanam_theme.opus",
+    "duration": 104
+  },
+  {
+    "id": 103,
+    "title": "Rolex Theme",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/vikram.png",
+    "asset": "assets/audio-opus/rolex_theme.opus",
+    "duration": 54
+  },
+  {
+    "id": 104,
+    "title": "Lokiverse",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/vikram.png",
+    "asset": "assets/audio-opus/lokiverse.opus",
+    "duration": 156
+  },
+  {
+    "id": 105,
+    "title": "Badass",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/leo.png",
+    "asset": "assets/audio-opus/badass.opus",
+    "duration": 236
+  },
+  {
+    "id": 106,
+    "title": "Lokiverse 2.0",
+    "artist": "Anirudh Ravichander",
+    "thumb": "assets/audio-thumb/leo.png",
+    "asset": "assets/audio-opus/lokiverse_2_0.opus",
+    "duration": 114
+  },
+  {
+    "id": 107,
+    "title": "People of Kotha",
+    "artist": "Jakes Bejoy, Travis King",
+    "thumb": "assets/audio-thumb/king_of_kotha.png",
+    "asset": "assets/audio-opus/people_of_kotha.opus",
+    "duration": 93
+  },
+  {
+    "id": 108,
+    "title": "Shiva Thandavame",
+    "artist": "Jakes Bejoy, Sanapati Bharadwaj Patrudu",
+    "thumb": "assets/audio-thumb/surya_saturday.png",
+    "asset": "assets/audio-opus/shiva_thandavame.opus",
+    "duration": 190
+  },
+  {
+    "id": 109,
+    "title": "The Revelation",
+    "artist": "Ghibran",
+    "thumb": "assets/audio-thumb/saaho.png",
+    "asset": "assets/audio-opus/the_revelation.opus",
+    "duration": 87
+  },
+  {
+    "id": 110,
+    "title": "Truth On The Wall",
+    "artist": "B. Ajaneesh Loknath",
+    "thumb": "assets/audio-thumb/mangalavaram.png",
+    "asset": "assets/audio-opus/truth_on_the_wall.opus",
+    "duration": 127
+  },
+  {
+    "id": 111,
+    "title": "Tony's Mayhem",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/marco.png",
+    "asset": "assets/audio-opus/tony_s_mayhem.opus",
+    "duration": 82
+  },
+  {
+    "id": 112,
+    "title": "Chaos In Khansaar",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/chaos_in_khansaar.opus",
+    "duration": 77
+  },
+  {
+    "id": 113,
+    "title": "Deva Enters Khansaar",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/deva_enters_khansaar.opus",
+    "duration": 89
+  },
+  {
+    "id": 114,
+    "title": "Deva Fights For Aradhya",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/deva_fights_for_aradhya.opus",
+    "duration": 97
+  },
+  {
+    "id": 115,
+    "title": "Kaaliaman Fight",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/kaaliaman_fight.opus",
+    "duration": 98
+  },
+  {
+    "id": 116,
+    "title": "Mayhem At Mahara",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/mayhem_at_mahara.opus",
+    "duration": 98
+  },
+  {
+    "id": 117,
+    "title": "Deva Kills Vishnu",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/deva_kills_vishnu.opus",
+    "duration": 114
+  },
+  {
+    "id": 118,
+    "title": "Deva Goes On Rage Mode",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/deva_goes_on_rage_mode.opus",
+    "duration": 56
+  },
+  {
+    "id": 119,
+    "title": "Varadha Raja Mannar Vs Salaar",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/varadha_raja_mannar_vs_salaar.opus",
+    "duration": 218
+  },
+  {
+    "id": 120,
+    "title": "Vardha's One Man Army",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/vardha_s_one_man_army.opus",
+    "duration": 63
+  },
+  {
+    "id": 121,
+    "title": "Rise Of Shouryangas",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/rise_of_shouryangas.opus",
+    "duration": 101
+  },
+  {
+    "id": 122,
+    "title": "Salaar The Shourayanga",
+    "artist": "Ravi Basrur",
+    "thumb": "assets/audio-thumb/salaar.png",
+    "asset": "assets/audio-opus/salaar_the_shourayanga.opus",
+    "duration": 114
+  },
+  {
+    "id": 123,
+    "title": "Vaa Vaa Pakkam Vaa (Remix)",
+    "artist": "Dj Gowtham, Ilaiyaraaja, S.P. Balasubrahmanyam, Vani Jairam",
+    "thumb": "assets/audio-thumb/coolie.png",
+    "asset": "assets/audio-opus/vaa_vaa_pakkam_vaa_remix.opus",
+    "duration": 91
+  },
+  {
+    "id": 124,
+    "title": "Dahaa Theme",
+    "artist": "Anirudh Ravichander, Lalo Salamanca, Heisenberg",
+    "thumb": "assets/audio-thumb/coolie.png",
+    "asset": "assets/audio-opus/dahaa_theme.opus",
+    "duration": 179
+  },
+  {
+    "id": 125,
+    "title": "Pinnak",
+    "artist": "SAMBATA",
+    "thumb": "assets/audio-thumb/pinnak.png",
+    "asset": "assets/audio-opus/pinnak.opus",
+    "duration": 389
+  },
+  {
+    "id": 126,
+    "title": "Palti Fire",
+    "artist": "SAMBATA",
+    "thumb": "assets/audio-thumb/palti_fire.png",
+    "asset": "assets/audio-opus/palti_fire.opus",
+    "duration": 182
+  },
+  {
+    "id": 127,
+    "title": "Nako Raste Changle",
+    "artist": "SAMBATA",
+    "thumb": "assets/audio-thumb/nako_raste_changle.png",
+    "asset": "assets/audio-opus/nako_raste_changle.opus",
+    "duration": 256
+  },
+  {
+    "id": 128,
+    "title": "Kaarte Nibaar",
+    "artist": "SAMBATA",
+    "thumb": "assets/audio-thumb/karte_nibaar.png",
+    "asset": "assets/audio-opus/kaarte_nibaar.opus",
+    "duration": 184
+  },
+  {
+    "id": 129,
+    "title": "Vazan",
+    "artist": "SAMBATA, Karan Kanchan",
+    "thumb": "assets/audio-thumb/vazan.png",
+    "asset": "assets/audio-opus/vazan.opus",
+    "duration": 189
+  },
+  {
+    "id": 130,
+    "title": "Hood Life",
+    "artist": "SAMBATA, Riar Saab, Karan Kanchan",
+    "thumb": "assets/audio-thumb/hood_life.png",
+    "asset": "assets/audio-opus/hood_life.opus",
+    "duration": 201
+  },
+  {
+    "id": 131,
+    "title": "Gangster Shit 1st",
+    "artist": "SAMBATA",
+    "thumb": "assets/audio-thumb/gangster_shit_1st.png",
+    "asset": "assets/audio-opus/gangster_shit_1st.opus",
+    "duration": 321
+  },
+  {
+    "id": 132,
+    "title": "Game",
+    "artist": "SAMBATA",
+    "thumb": "assets/audio-thumb/maaz.png",
+    "asset": "assets/audio-opus/game.opus",
+    "duration": 218
+  },
+  {
+    "id": 133,
+    "title": "3:59 AM",
+    "artist": "Divine",
+    "thumb": "assets/audio-thumb/3_59_am.png",
+    "asset": "assets/audio-opus/3_59_am.opus",
+    "duration": 274
+  },
+  {
+    "id": 134,
+    "title": "You & I",
+    "artist": "Divine",
+    "thumb": "assets/audio-thumb/you_&_i.png",
+    "asset": "assets/audio-opus/you_&_i.opus",
+    "duration": 217
+  },
+  {
+    "id": 135,
+    "title": "Chal Bombay",
+    "artist": "Divine",
+    "thumb": "assets/audio-thumb/kohinoor.png",
+    "asset": "assets/audio-opus/chal_bombay.opus",
+    "duration": 177
+  },
+  {
+    "id": 136,
+    "title": "Kaam 25",
+    "artist": "Divine",
+    "thumb": "assets/audio-thumb/kaam_25.png",
+    "asset": "assets/audio-opus/kaam_25.opus",
+    "duration": 161
+  },
+  {
+    "id": 137,
+    "title": "Baazigar",
+    "artist": "Divine, Armani White",
+    "thumb": "assets/audio-thumb/baazigar.png",
+    "asset": "assets/audio-opus/baazigar.opus",
+    "duration": 168
+  },
+  {
+    "id": 138,
+    "title": "Mirchi",
+    "artist": "Divine, MC Altaf, Stylo G, Phenom",
+    "thumb": "assets/audio-thumb/mirchi.png",
+    "asset": "assets/audio-opus/mirchi.opus",
+    "duration": 198
+  },
+  {
+    "id": 139,
+    "title": "Triple OG",
+    "artist": "Divine, Phenom",
+    "thumb": "assets/audio-thumb/triple_og.png",
+    "asset": "assets/audio-opus/triple_og.opus",
+    "duration": 185
+  },
+  {
+    "id": 140,
+    "title": "Kohinoor",
+    "artist": "Divine",
+    "thumb": "assets/audio-thumb/kohinoor.png",
+    "asset": "assets/audio-opus/kohinoor.opus",
+    "duration": 202
+  },
+  {
+    "id": 141,
+    "title": "Sadgi Toh Hamari Zara Dekhiye",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/sadgi_toh_hamari_zara_dekhiye.opus",
+    "duration": 903
+  },
+  {
+    "id": 142,
+    "title": "Aisa Banna Sanwarna Mubarak Tumhe",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/aisa_banna_sanwarna_mubarak_tumhe.opus",
+    "duration": 1048
+  },
+  {
+    "id": 143,
+    "title": "Sochta Hoon Keh Woh Kitne Masoom Teh",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/sochta_hoon_keh_woh_kitne_masoom_the.opus",
+    "duration": 1372
+  },
+  {
+    "id": 144,
+    "title": "Kali Kali Zulfon Ke Phande Na Dalo",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/kali_kali_zulfon_ke_phande_na_dalo.opus",
+    "duration": 1757
+  },
+  {
+    "id": 145,
+    "title": "Tumhain Dillagi Bhool Jani Paray Gi",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/tumhain_dillagi_bhool_jani_paray_gi.opus",
+    "duration": 983
+  },
+  {
+    "id": 146,
+    "title": "Ye Jo Halka Halka Saroor Hai",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/ye_jo_halka_halka_saroor_hai.opus",
+    "duration": 984
+  },
+  {
+    "id": 147,
+    "title": "Phiroon Dhoondta Maikada Toba Toba",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/phiroon_dhoondta_maikada_toba_toba.opus",
+    "duration": 1122
+  },
+  {
+    "id": 148,
+    "title": "Dil Pe Zakham Khate Hain",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/dil_pe_zakhm_khate_hain.opus",
+    "duration": 568
+  },
+  {
+    "id": 149,
+    "title": "Jitne Bhi Zakham Hai Mere Dil Par",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/jitne_bhi_zakham_hai_mere_dil_par.opus",
+    "duration": 815
+  },
+  {
+    "id": 150,
+    "title": "Sanson Ki Mala Pe",
+    "artist": "Nusrat Fateh Ali Khan",
+    "thumb": "assets/audio-thumb/nfak.png",
+    "asset": "assets/audio-opus/sanson_ki_mala_pe.opus",
+    "duration": 1801
+  },
+  {
+    "id": 151,
+    "title": "Sajna Ve",
+    "artist": "Ravator, Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/sajna_ve.opus",
+    "duration": 175
+  },
+  {
+    "id": 152,
+    "title": "Paaro",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/paaro.opus",
+    "duration": 171
+  },
+  {
+    "id": 153,
+    "title": "Ishq Hai",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/ishq_hai.opus",
+    "duration": 249
+  },
+  {
+    "id": 154,
+    "title": "Samjho Na",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/samjho_na.opus",
+    "duration": 170
+  },
+  {
+    "id": 155,
+    "title": "Humdum",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/humdum.opus",
+    "duration": 182
+  },
+  {
+    "id": 156,
+    "title": "Sunn Mere Yaar Ve",
+    "artist": "Sachin-Jigar, Aditya Rikhari, Amitabh Bhattacharya",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/sunn_mere_yaar_ve.opus",
+    "duration": 189
+  },
+  {
+    "id": 157,
+    "title": "Subha Shaam",
+    "artist": "Aditya Rikhari, TEDD",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/subha_shaam.opus",
+    "duration": 177
+  },
+  {
+    "id": 158,
+    "title": "Sahiba",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/sahiba.opus",
+    "duration": 183
+  },
+  {
+    "id": 159,
+    "title": "Ranjha",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/ranjha.opus",
+    "duration": 187
+  },
+  {
+    "id": 160,
+    "title": "Paro",
+    "artist": "Aditya Rikhari, UNPLG'd",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/paro.opus",
+    "duration": 70
+  },
+  {
+    "id": 161,
+    "title": "Raatein Guzaari",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/raatein_guzaari.opus",
+    "duration": 183
+  },
+  {
+    "id": 162,
+    "title": "Dil Na Lage",
+    "artist": "Aditya Rikhari, The Rish, Alan Sampson",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/dil_na_lage.opus",
+    "duration": 156
+  },
+  {
+    "id": 163,
+    "title": "Marham",
+    "artist": "Rochak Kohli, Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/marham.opus",
+    "duration": 151
+  },
+  {
+    "id": 164,
+    "title": "Faasle",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/faasle.opus",
+    "duration": 216
+  },
+  {
+    "id": 165,
+    "title": "Teri Yaad",
+    "artist": "Aditya Rikhari",
+    "thumb": "assets/audio-thumb/aditya_rikhari.png",
+    "asset": "assets/audio-opus/teri_yaad.opus",
+    "duration": 230
+  }
+]

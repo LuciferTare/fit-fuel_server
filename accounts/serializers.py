@@ -19,6 +19,7 @@ from accounts.models import (
     UserType,
 )
 from accounts.utils import MEMBERSHIP_DURATION_MONTHS, calculate_membership_end
+from core.serializers import UploadedFileURLField
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -131,6 +132,7 @@ class UserMeSerializer(serializers.ModelSerializer):
     age = serializers.IntegerField(read_only=True)
     gym_id = serializers.UUIDField(read_only=True)
     trainer_id = serializers.UUIDField(read_only=True)
+    gym_uuid = serializers.UUIDField(source="gym_details_id", read_only=True)
 
     class Meta:
         model = CustomUser
@@ -143,21 +145,72 @@ class UserMeSerializer(serializers.ModelSerializer):
             "age",
             "gender",
             "profile_picture",
+            "experience_level",
             "user_type",
             "status",
             "gym_id",
+            "gym_uuid",
             "trainer_id",
             "created_at",
         ]
         read_only_fields = fields
 
 
+class ProfileUpdateSerializer(serializers.ModelSerializer):
+    """Writable counterpart to UserMeSerializer for POST /auth/profile/update/."""
+
+    age = serializers.IntegerField(read_only=True)
+    gym_id = serializers.UUIDField(read_only=True)
+    trainer_id = serializers.UUIDField(read_only=True)
+    gym_uuid = serializers.UUIDField(source="gym_details_id", read_only=True)
+    profile_picture = UploadedFileURLField()
+
+    class Meta:
+        model = CustomUser
+        fields = [
+            "uuid",
+            "phone_number",
+            "first_name",
+            "last_name",
+            "date_of_birth",
+            "age",
+            "gender",
+            "profile_picture",
+            "experience_level",
+            "user_type",
+            "status",
+            "gym_id",
+            "gym_uuid",
+            "trainer_id",
+            "created_at",
+        ]
+        read_only_fields = [
+            "uuid",
+            "phone_number",
+            "user_type",
+            "status",
+            "gym_id",
+            "gym_uuid",
+            "trainer_id",
+            "created_at",
+        ]
+
+
 # ── Gym master serializer ───────────────────────────────────────────────────────
 
 class GymSerializer(serializers.ModelSerializer):
+    # Declared explicitly (overriding the model's null=True) so they're
+    # required on create/full-update, but still omittable on a partial
+    # update — DRF's `partial=True` skips required checks for absent
+    # fields, while `allow_null=False` still rejects an explicit `null`,
+    # so a partial update can change the location but never clear it.
+    latitude = serializers.DecimalField(max_digits=9, decimal_places=6, allow_null=False)
+    longitude = serializers.DecimalField(max_digits=9, decimal_places=6, allow_null=False)
+    gym_picture = UploadedFileURLField()
+
     class Meta:
         model = Gym
-        fields = ["uuid", "name"]
+        fields = ["uuid", "name", "gym_picture", "latitude", "longitude"]
         read_only_fields = ["uuid"]
 
 
@@ -168,7 +221,14 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=True)
     gender = serializers.ChoiceField(choices=GenderChoice.choices, required=True)
+    profile_picture = UploadedFileURLField()
     gym_name = serializers.CharField(write_only=True, max_length=255)
+    gym_latitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, write_only=True
+    )
+    gym_longitude = serializers.DecimalField(
+        max_digits=9, decimal_places=6, write_only=True
+    )
     membership = serializers.ChoiceField(
         choices=list(MEMBERSHIP_DURATION_MONTHS.keys()), write_only=True
     )
@@ -185,6 +245,8 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
             "gender",
             "profile_picture",
             "gym_name",
+            "gym_latitude",
+            "gym_longitude",
             "membership",
             "status",
             "created_at",
@@ -202,12 +264,18 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password")
         gym_name = validated_data.pop("gym_name")
+        gym_latitude = validated_data.pop("gym_latitude")
+        gym_longitude = validated_data.pop("gym_longitude")
         membership = validated_data.pop("membership")
         created_by = validated_data.get("created_by")
 
         with transaction.atomic():
             gym = Gym.objects.create(
-                name=gym_name, created_by=created_by, updated_by=created_by
+                name=gym_name,
+                latitude=gym_latitude,
+                longitude=gym_longitude,
+                created_by=created_by,
+                updated_by=created_by,
             )
 
             start_date = timezone.now().date()
@@ -231,6 +299,7 @@ class GymOwnerDetailSerializer(serializers.ModelSerializer):
     trainer_limit = serializers.IntegerField(min_value=0, required=False)
     trainer_count = serializers.IntegerField(read_only=True)
     member_count = serializers.IntegerField(read_only=True)
+    profile_picture = UploadedFileURLField()
 
     class Meta:
         model = CustomUser
@@ -290,6 +359,7 @@ class TrainerCreateSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=True)
     gender = serializers.ChoiceField(choices=GenderChoice.choices, required=True)
+    profile_picture = UploadedFileURLField()
 
     class Meta:
         model = CustomUser
@@ -301,6 +371,7 @@ class TrainerCreateSerializer(serializers.ModelSerializer):
             "date_of_birth",
             "gender",
             "profile_picture",
+            "experience_level",
         ]
 
     def validate_phone_number(self, value):
@@ -324,6 +395,7 @@ class TrainerDetailSerializer(serializers.ModelSerializer):
     gym_id = serializers.UUIDField(read_only=True)
     age = serializers.IntegerField(read_only=True)
     password = serializers.CharField(write_only=True, required=False, allow_blank=False)
+    profile_picture = UploadedFileURLField()
 
     class Meta:
         model = CustomUser
@@ -366,6 +438,7 @@ class MemberCreateSerializer(serializers.ModelSerializer):
     first_name = serializers.CharField(required=True)
     last_name = serializers.CharField(required=True)
     gender = serializers.ChoiceField(choices=GenderChoice.choices, required=True)
+    profile_picture = UploadedFileURLField()
 
     class Meta:
         model = CustomUser
@@ -377,6 +450,7 @@ class MemberCreateSerializer(serializers.ModelSerializer):
             "date_of_birth",
             "gender",
             "profile_picture",
+            "experience_level",
             "trainer_uuid",
         ]
 
@@ -419,6 +493,7 @@ class MemberDetailSerializer(serializers.ModelSerializer):
     trainer_id = serializers.UUIDField(allow_null=True, required=False)
     age = serializers.IntegerField(read_only=True)
     password = serializers.CharField(write_only=True, required=False, allow_blank=False)
+    profile_picture = UploadedFileURLField()
 
     class Meta:
         model = CustomUser
@@ -474,6 +549,7 @@ class MemberProfileSerializer(serializers.ModelSerializer):
     """Limited self-edit serializer for Members."""
 
     age = serializers.IntegerField(read_only=True)
+    profile_picture = UploadedFileURLField()
 
     class Meta:
         model = CustomUser
@@ -486,6 +562,7 @@ class MemberProfileSerializer(serializers.ModelSerializer):
             "date_of_birth",
             "age",
             "gender",
+            "experience_level",
         ]
         read_only_fields = ["uuid", "phone_number", "date_of_birth", "age"]
 

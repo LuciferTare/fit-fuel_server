@@ -6,6 +6,7 @@ GET  /api/backup/download/ — client pulls server changes since a timestamp
 """
 import logging
 
+from django.db import transaction
 from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import status
@@ -13,7 +14,9 @@ from rest_framework.response import Response
 
 from attendance.models import Attendance
 from attendance.serializers import AttendanceSerializer
-from core.permissions import IsAdmin, IsGymOwner, IsTrainer
+from backup.models import ExerciseSet, SessionExercise, SessionRestBreak, WorkoutSession
+from core.pagination import OptionalPagination
+from core.permissions import IsAdmin, IsAuthenticatedUser, IsGymOwner, IsTrainer
 from core.views import BaseAPIView
 
 logger = logging.getLogger(__name__)
@@ -124,6 +127,7 @@ class BackupDownloadView(BaseAPIView):
     """
 
     permission_classes = [IsAdmin | IsGymOwner | IsTrainer]
+    pagination_class = OptionalPagination
 
     @extend_schema(
         tags=["Backup"],
@@ -138,13 +142,116 @@ class BackupDownloadView(BaseAPIView):
 
         qs = Attendance.active_objects.all()
         if user_id:
-            qs = qs.filter(member__uuid=user_id)
+            qs = qs.filter(user__uuid=user_id)
         if since_raw:
             since_dt = parse_datetime(since_raw)
             if since_dt:
                 qs = qs.filter(updated_at__gte=since_dt)
 
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            attendance_payload = self.get_paginated_response(
+                AttendanceSerializer(page, many=True).data
+            ).data
+        else:
+            attendance_payload = AttendanceSerializer(qs, many=True).data
+
         return Response(
-            {"changes": {"attendance": AttendanceSerializer(qs, many=True).data}},
+            {"changes": {"attendance": attendance_payload}},
             status=status.HTTP_200_OK,
         )
+
+
+class WorkoutSyncUploadView(BaseAPIView):
+    """POST /api/backup/workouts/upload/ — replace the authenticated user's
+    entire server-side workout history with what's in the request body.
+
+    Whole-history replace, not per-record merge: the local app never deletes
+    old sessions (it only accumulates), so each sync's payload already IS
+    the user's full history. Replacing avoids double-counting a session
+    that was already synced in a previous call.
+
+    Payload:
+        {
+            "sessions": [
+                {
+                    "session_date": "2026-01-15", "duration_minutes": 45,
+                    "notes": "...", "calories_burned": 320.5, "is_rest_day": false,
+                    "exercises": [
+                        {
+                            "exercise_name": "Barbell Squat", "body_part": "Legs",
+                            "muscle": "Quads", "is_unilateral": false,
+                            "set_type": "normal", "superset_group": null,
+                            "sets": [
+                                {"set_number": 1, "reps": 10, "weight_kg": 60.0,
+                                 "duration_seconds": null, "speed_kmh": null}
+                            ]
+                        }
+                    ],
+                    "rest_breaks": [
+                        {"duration_minutes": 2, "sort_index": 0}
+                    ]
+                }
+            ]
+        }
+    """
+
+    permission_classes = [IsAuthenticatedUser]
+
+    @extend_schema(tags=["Backup"])
+    def post(self, request):
+        sessions_data = request.data.get("sessions", [])
+        if not isinstance(sessions_data, list):
+            return Response({"detail": "sessions must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                WorkoutSession.objects.filter(user=request.user).delete()
+                for session_data in sessions_data:
+                    session = WorkoutSession.objects.create(
+                        user=request.user,
+                        session_date=session_data.get("session_date"),
+                        duration_minutes=session_data.get("duration_minutes") or 0,
+                        notes=session_data.get("notes"),
+                        calories_burned=session_data.get("calories_burned"),
+                        is_rest_day=bool(session_data.get("is_rest_day", False)),
+                        created_by=request.user,
+                        updated_by=request.user,
+                    )
+                    for exercise_data in session_data.get("exercises", []):
+                        exercise = SessionExercise.objects.create(
+                            session=session,
+                            exercise_name=exercise_data.get("exercise_name", ""),
+                            body_part=exercise_data.get("body_part"),
+                            muscle=exercise_data.get("muscle"),
+                            is_unilateral=bool(exercise_data.get("is_unilateral", False)),
+                            set_type=exercise_data.get("set_type") or "normal",
+                            superset_group=exercise_data.get("superset_group"),
+                            created_by=request.user,
+                            updated_by=request.user,
+                        )
+                        for i, set_data in enumerate(exercise_data.get("sets", []), start=1):
+                            ExerciseSet.objects.create(
+                                exercise=exercise,
+                                set_number=set_data.get("set_number") or i,
+                                reps=set_data.get("reps"),
+                                weight_kg=set_data.get("weight_kg"),
+                                duration_seconds=set_data.get("duration_seconds"),
+                                speed_kmh=set_data.get("speed_kmh"),
+                                created_by=request.user,
+                                updated_by=request.user,
+                            )
+                    for i, rest_data in enumerate(session_data.get("rest_breaks", [])):
+                        SessionRestBreak.objects.create(
+                            session=session,
+                            duration_minutes=rest_data.get("duration_minutes") or 0,
+                            sort_index=rest_data.get("sort_index", i),
+                            created_by=request.user,
+                            updated_by=request.user,
+                        )
+        except Exception as exc:
+            logger.exception("Workout sync upload error")
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        synced_sessions = WorkoutSession.objects.filter(user=request.user).count()
+        return Response({"synced_sessions": synced_sessions}, status=status.HTTP_200_OK)

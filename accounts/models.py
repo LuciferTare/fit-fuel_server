@@ -35,6 +35,12 @@ class Gym(BaseModel):
     """Master record for a gym's name, referenced by its owner's CustomUser via `gym_details`."""
 
     name = models.CharField(max_length=255)
+    gym_picture = models.ImageField(upload_to="gym_pictures/", null=True, blank=True)
+    # Nullable at the DB layer only so existing rows survive the migration —
+    # required (and non-nullable) at the API layer: compulsory on create,
+    # editable but never clearable afterwards. See GymSerializer.
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     class Meta:
         verbose_name = "Gym"
@@ -60,6 +66,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     profile_picture = models.ImageField(
         upload_to="profile_pictures/", null=True, blank=True
     )
+    experience_level = models.CharField(max_length=50, null=True, blank=True)
 
     # Business
     user_type = models.CharField(

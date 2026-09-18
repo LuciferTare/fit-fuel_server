@@ -169,7 +169,25 @@ class GymAdmin(admin.ModelAdmin):
     list_display = ["uuid", "name", "created_at"]
     search_fields = ["name"]
     ordering = ["-created_at"]
-    readonly_fields = ["uuid", "created_at", "updated_at", "created_by", "updated_by", "deleted_at"]
+    readonly_fields = [
+        "uuid",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "deleted_at",
+        "gym_picture_preview",
+    ]
+
+    def gym_picture_preview(self, obj):
+        if obj.gym_picture:
+            return format_html(
+                '<img src="{}" width="80" height="80" style="object-fit:cover;border-radius:8px;" />',
+                obj.gym_picture.url,
+            )
+        return "No photo"
+
+    gym_picture_preview.short_description = "Photo Preview"
 
 
 @admin.register(Membership)

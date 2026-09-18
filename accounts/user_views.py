@@ -26,7 +26,7 @@ from accounts.serializers import (
     TrainerSummarySerializer,
 )
 from core.exceptions import ConflictException
-from core.pagination import CustomPagination
+from core.pagination import CustomPagination, OptionalPagination
 from core.permissions import (
     IsAdmin,
     IsAdminOrGymOwner,
@@ -53,11 +53,21 @@ class GymViewSet(BaseModelViewSet):
     def get_queryset(self):
         if self.action == "enable":
             return Gym.objects.all()
-        return Gym.active_objects.all()
+        qs = Gym.active_objects.all()
+        user = self.request.user
+        if (
+            self.action in ("update", "partial_update_via_post")
+            and user.is_authenticated
+            and user.user_type == UserType.GYM_OWNER
+        ):
+            return qs.filter(uuid=user.gym_details_id)
+        return qs
 
     def get_permissions(self):
         if self.action in ("list", "retrieve"):
             return [IsAuthenticatedUser()]
+        if self.action in ("update", "partial_update_via_post"):
+            return [IsAdminOrGymOwner()]
         return [IsAdmin()]
 
     def perform_create(self, serializer):
@@ -474,6 +484,7 @@ class MemberPaymentView(BaseAPIView):
     """
 
     permission_classes = [IsAdminOrGymOwner]
+    pagination_class = OptionalPagination
 
     @extend_schema(request=MemberPaymentSerializer, responses=MemberPaymentResponseSerializer)
     def post(self, request):
@@ -535,4 +546,7 @@ class MemberPaymentView(BaseAPIView):
         if member_id:
             qs = qs.filter(member__uuid=member_id)
 
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(MembershipSerializer(page, many=True).data)
         return Response(MembershipSerializer(qs, many=True).data)

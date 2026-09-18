@@ -2,6 +2,7 @@ from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 
+from core.pagination import OptionalPagination
 from core.permissions import IsAdmin, IsAuthenticatedUser
 from core.views import BaseModelViewSet
 from music.models import Playlist, Song
@@ -22,10 +23,11 @@ WRITE_ACTIONS = {
 
 
 class _MusicViewSet(BaseModelViewSet):
-    """Shared behavior: full-array lists (no pagination), admin-only writes,
-    authenticated reads, soft-delete on destroy, and read-shaped write responses."""
+    """Shared behavior: full-array lists by default (opt into pagination via
+    `?page_size=`), admin-only writes, authenticated reads, soft-delete on
+    destroy, and read-shaped write responses."""
 
-    pagination_class = None
+    pagination_class = OptionalPagination
     read_serializer_class = None
     write_serializer_class = None
 

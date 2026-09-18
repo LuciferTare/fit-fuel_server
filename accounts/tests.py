@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 from django.test import TestCase
 from django.urls import reverse
@@ -87,6 +88,21 @@ class AuthTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.json()["data"]["phone_number"], self.admin.phone_number)
 
+    def test_me_includes_gym_uuid_for_gym_owner(self):
+        gym = Gym.objects.create(name="Iron Paradise")
+        self.gym_owner.gym_details = gym
+        self.gym_owner.save(update_fields=["gym_details"])
+
+        self.client.force_authenticate(user=self.gym_owner)
+        res = self.client.get(reverse("auth-profile"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.json()["data"]["gym_uuid"], str(gym.uuid))
+
+    def test_me_gym_uuid_null_for_non_gym_owner(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.get(reverse("auth-profile"))
+        self.assertIsNone(res.json()["data"]["gym_uuid"])
+
     def test_me_unauthenticated(self):
         res = self.client.get(reverse("auth-profile"))
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -140,6 +156,8 @@ class AdminTests(TestCase):
                 "last_name": "Owner",
                 "gender": "male",
                 "gym_name": "Iron Paradise",
+                "gym_latitude": "18.520430",
+                "gym_longitude": "73.856743",
                 "membership": "Monthly",
             },
             format="json",
@@ -148,6 +166,8 @@ class AdminTests(TestCase):
         owner = CustomUser.objects.get(phone_number="9000000050")
         self.assertEqual(owner.user_type, UserType.GYM_OWNER)
         self.assertEqual(owner.gym_details.name, "Iron Paradise")
+        self.assertEqual(owner.gym_details.latitude, Decimal("18.520430"))
+        self.assertEqual(owner.gym_details.longitude, Decimal("73.856743"))
         today = date.today()
         self.assertEqual(owner.membership_start, today)
         self.assertEqual(owner.membership_end, calculate_membership_end(today, "Monthly"))
@@ -167,6 +187,8 @@ class AdminTests(TestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("gym_name", res.json()["data"])
+        self.assertIn("gym_latitude", res.json()["data"])
+        self.assertIn("gym_longitude", res.json()["data"])
         self.assertIn("membership", res.json()["data"])
 
     def test_gym_owner_cannot_create_gym_owner(self):
@@ -612,6 +634,17 @@ class MemberProfileTests(TestCase):
         res = self.client.get(reverse("member-profile"))
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
+    def test_member_can_update_experience_level(self):
+        res = self.client.post(
+            reverse("member-profile"),
+            {"experience_level": "Intermediate"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.json()["data"]["experience_level"], "Intermediate")
+        self.member.refresh_from_db()
+        self.assertEqual(self.member.experience_level, "Intermediate")
+
 
 class GymMasterTests(TestCase):
     def setUp(self):
@@ -622,12 +655,28 @@ class GymMasterTests(TestCase):
         )
         self.member = make_user("9000000007", "M@1234", user_type=UserType.MEMBER)
         self.gym = Gym.objects.create(name="Iron Paradise")
+        self.other_gym = Gym.objects.create(name="Power House")
+        self.gym_owner = make_user(
+            "9000000008", "Owner@1234", user_type=UserType.GYM_OWNER,
+            gym_details=self.gym,
+        )
 
     def test_admin_creates_gym(self):
         self.client.force_authenticate(user=self.admin)
-        res = self.client.post(reverse("gym-list"), {"name": "Power House"}, format="json")
+        res = self.client.post(
+            reverse("gym-list"),
+            {"name": "New Gym", "latitude": "18.520430", "longitude": "73.856743"},
+            format="json",
+        )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
-        self.assertTrue(Gym.objects.filter(name="Power House").exists())
+        self.assertTrue(Gym.objects.filter(name="New Gym").exists())
+
+    def test_admin_creates_gym_missing_location(self):
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.post(reverse("gym-list"), {"name": "No Location Gym"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("latitude", res.json()["data"])
+        self.assertIn("longitude", res.json()["data"])
 
     def test_admin_edits_gym(self):
         self.client.force_authenticate(user=self.admin)
@@ -675,3 +724,62 @@ class GymMasterTests(TestCase):
     def test_unauthenticated_user_cannot_list_gyms(self):
         res = self.client.get(reverse("gym-list"))
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_gym_owner_edits_own_gym(self):
+        self.client.force_authenticate(user=self.gym_owner)
+        res = self.client.post(
+            reverse("gym-update", kwargs={"pk": str(self.gym.uuid)}),
+            {"name": "Iron Paradise Renamed"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.gym.refresh_from_db()
+        self.assertEqual(self.gym.name, "Iron Paradise Renamed")
+
+    def test_gym_owner_can_update_own_gym_location(self):
+        self.client.force_authenticate(user=self.gym_owner)
+        res = self.client.post(
+            reverse("gym-update", kwargs={"pk": str(self.gym.uuid)}),
+            {"latitude": "19.076090", "longitude": "72.877426"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.gym.refresh_from_db()
+        self.assertEqual(self.gym.latitude, Decimal("19.076090"))
+        self.assertEqual(self.gym.longitude, Decimal("72.877426"))
+
+    def test_gym_owner_cannot_clear_gym_location(self):
+        self.gym.latitude = Decimal("18.520430")
+        self.gym.longitude = Decimal("73.856743")
+        self.gym.save(update_fields=["latitude", "longitude"])
+
+        self.client.force_authenticate(user=self.gym_owner)
+        res = self.client.post(
+            reverse("gym-update", kwargs={"pk": str(self.gym.uuid)}),
+            {"latitude": None, "longitude": None},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.gym.refresh_from_db()
+        self.assertEqual(self.gym.latitude, Decimal("18.520430"))
+
+    def test_gym_owner_cannot_edit_another_gym(self):
+        self.client.force_authenticate(user=self.gym_owner)
+        res = self.client.post(
+            reverse("gym-update", kwargs={"pk": str(self.other_gym.uuid)}),
+            {"name": "Hijacked Name"},
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+        self.other_gym.refresh_from_db()
+        self.assertEqual(self.other_gym.name, "Power House")
+
+    def test_gym_owner_cannot_create_gym(self):
+        self.client.force_authenticate(user=self.gym_owner)
+        res = self.client.post(reverse("gym-list"), {"name": "New Gym"}, format="json")
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_gym_owner_cannot_delete_gym(self):
+        self.client.force_authenticate(user=self.gym_owner)
+        res = self.client.delete(reverse("gym-detail", kwargs={"pk": str(self.gym.uuid)}))
+        self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)

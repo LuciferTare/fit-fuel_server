@@ -10,6 +10,7 @@ from accounts.serializers import (
     ChangePasswordSerializer,
     LoginSerializer,
     LogoutSerializer,
+    ProfileUpdateSerializer,
     UserMeSerializer,
 )
 from core.views import BaseAPIView, NoAuthAPIView
@@ -79,6 +80,20 @@ class MeView(BaseAPIView):
     def get(self, request):
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
+
+
+@extend_schema(summary="Update Current User Profile", tags=["Auth"])
+class ProfileUpdateView(BaseAPIView):
+    serializer_class = ProfileUpdateSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(
+            request.user, data=request.data, partial=True
+        )
+        if serializer.is_valid():
+            serializer.save(updated_by=request.user)
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 @extend_schema(summary="Change Password", tags=["Auth"])

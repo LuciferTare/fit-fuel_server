@@ -1,13 +1,7 @@
 from rest_framework import serializers
 
+from core.serializers import UploadedFileURLField
 from music.models import Playlist, PlaylistSong, Song
-
-
-def _validate_png(value):
-    name = getattr(value, "name", "") or ""
-    if not name.lower().endswith(".png"):
-        raise serializers.ValidationError("Image must be a .png file.")
-    return value
 
 
 def _validate_opus(value):
@@ -53,7 +47,7 @@ class SongSerializer(MediaRefMixin, serializers.ModelSerializer):
 class SongCreateSerializer(serializers.ModelSerializer):
     """Write shape (multipart) for admin-added songs."""
 
-    thumb = serializers.ImageField(source="thumb_file", validators=[_validate_png])
+    thumb = UploadedFileURLField(source="thumb_file", required=True)
     asset = serializers.FileField(source="asset_file", validators=[_validate_opus])
 
     class Meta:
@@ -96,8 +90,8 @@ class PlaylistSerializer(MediaRefMixin, serializers.ModelSerializer):
 class PlaylistCreateSerializer(serializers.ModelSerializer):
     """Write shape (multipart) for admin-added playlists."""
 
-    icon = serializers.ImageField(source="icon_file", validators=[_validate_png])
-    cover = serializers.ImageField(source="cover_file", validators=[_validate_png])
+    icon = UploadedFileURLField(source="icon_file", required=True)
+    cover = UploadedFileURLField(source="cover_file", required=True)
     song_ids = serializers.ListField(
         child=serializers.IntegerField(), allow_empty=True, required=False
     )
