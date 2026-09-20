@@ -77,3 +77,38 @@ class SessionRestBreak(BaseModel):
 
     class Meta:
         db_table = "backup_session_rest_breaks"
+
+
+class BodyMeasurement(BaseModel):
+    """Server-side mirror of the local app's `user_profiles` table.
+
+    Sync is whole-history replace, same rationale as WorkoutSession: the
+    local app only accumulates measurement history, so each sync payload
+    already is the user's full history. See `backup.views.BodyMeasurementSyncUploadView`.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="body_measurements"
+    )
+    age = models.PositiveIntegerField(null=True, blank=True)
+    gender = models.CharField(max_length=20, null=True, blank=True)
+    is_correction = models.BooleanField(default=False)
+    weight_kg = models.FloatField(null=True, blank=True)
+    height_cm = models.FloatField(null=True, blank=True)
+    chest_cm = models.FloatField(null=True, blank=True)
+    waist_cm = models.FloatField(null=True, blank=True)
+    biceps_cm = models.FloatField(null=True, blank=True)
+    thighs_cm = models.FloatField(null=True, blank=True)
+    neck_cm = models.FloatField(null=True, blank=True)
+    hip_cm = models.FloatField(null=True, blank=True)
+    body_fat_percent = models.FloatField(null=True, blank=True)
+    recorded_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "backup_body_measurements"
+        indexes = [
+            models.Index(fields=["user", "recorded_at"], name="bmeasure_user_recorded_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} — {self.recorded_at}"

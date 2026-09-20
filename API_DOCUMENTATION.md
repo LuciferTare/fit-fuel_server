@@ -1,6 +1,6 @@
 # Fit&Fuel API Documentation
 
-**Version:** Phase 1  
+**Version:** Phase 1–3 (core CRUD, membership/payment tracking, attendance/reports/backup/music)  
 **Base URL:** `http://<host>/`  
 **Authentication:** JWT Bearer Token — include `Authorization: Bearer <access_token>` on all protected endpoints.
 
@@ -21,18 +21,19 @@
 11. [Backup / Sync](#11-backup--sync)
 12. [Utility](#12-utility)
 13. [Music (Playlists & Songs)](#13-music-playlists--songs)
+14. [Known Issues & Implementation Notes](#14-known-issues--implementation-notes)
 
 ---
 
 ## Permission Roles
 
-| Role                  | Condition                             |
-| --------------------- | ------------------------------------- |
-| `IsAdmin`             | `user_type == admin`                  |
-| `IsGymOwner`          | `user_type == gym_owner`              |
-| `IsTrainer`           | `user_type == trainer`                |
-| `IsMember`            | `user_type == member`                 |
-| `IsAdminOrGymOwner`   | `user_type` in `admin`, `gym_owner`   |
+| Role                | Condition                           |
+| ------------------- | ----------------------------------- |
+| `IsAdmin`           | `user_type == admin`                |
+| `IsGymOwner`        | `user_type == gym_owner`            |
+| `IsTrainer`         | `user_type == trainer`              |
+| `IsMember`          | `user_type == member`               |
+| `IsAdminOrGymOwner` | `user_type` in `admin`, `gym_owner` |
 
 ---
 
@@ -98,12 +99,14 @@ Login with phone number and password. Returns JWT access/refresh tokens and a us
 
 #### Error Responses
 
-| Status | When                                                                  | Body                                                               |
-| ------ | --------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `401`  | Phone number not registered, or password incorrect                    | message: `"Invalid phone number or password."`                     |
-| `403`  | Account `status` is `disabled`                                        | message: `"Account is disabled."`                                  |
-| `403`  | Account `status` is `suspended`                                       | message: `"Account is suspended."`                                 |
-| `403`  | Account `status` is `deleted` (or `is_deleted = true`)                 | message: `"Account has been deleted."`                             |
+| Status | When                                                   | Body                                           |
+| ------ | ------------------------------------------------------ | ---------------------------------------------- |
+| `401`  | Phone number not registered, or password incorrect     | message: `"Invalid phone number or password."` |
+| `403`  | Account `status` is `disabled`                         | message: `"Account is disabled."`              |
+| `403`  | Account `status` is `suspended`                        | message: `"Account is suspended."`             |
+| `403`  | Account `status` is `deleted` (or `is_deleted = true`) | message: `"Account has been deleted."`         |
+
+**Token lifetimes:** the access token issued here is valid for `ACCESS_TOKEN_TIME` minutes (env-configurable, default **1440** = 24 hours); the refresh token is valid for `REFRESH_TOKEN_TIME` minutes (env-configurable, default **43200** = 30 days). `ROTATE_REFRESH_TOKENS`/`BLACKLIST_AFTER_ROTATION` are both enabled, so every `POST /auth/token/refresh/` call issues a new refresh token and blacklists the one just used — clients must persist the rotated `refresh` value from each refresh response, not just the new `access` token (see the note on that endpoint below).
 
 ---
 
@@ -121,9 +124,12 @@ Exchange a valid refresh token for a new access token.
 
 #### Response
 
-| Field    | Type   | Description          |
-| -------- | ------ | -------------------- |
-| `access` | string | New JWT access token |
+| Field     | Type   | Description                                     |
+| --------- | ------ | ----------------------------------------------- |
+| `access`  | string | New JWT access token                            |
+| `refresh` | string | New JWT refresh token — see rotation note below |
+
+`TokenRefreshAPIView` (`accounts/views.py`) is `rest_framework_simplejwt`'s stock `TokenRefreshView` with only the response renderer swapped in — it does not override `post()`. Because `ROTATE_REFRESH_TOKENS=True` and `BLACKLIST_AFTER_ROTATION=True` are set (`fit_&fuel/settings.py`'s `SIMPLE_JWT` block), simplejwt's `TokenRefreshSerializer` is expected to blacklist the submitted refresh token and issue a new one alongside the new access token. **This reflects `djangorestframework_simplejwt`==5.5.0's documented rotation behavior; it was not independently re-verified by inspecting the installed package's source in this pass** (no Python runtime was available in the environment used to update this doc). Clients should persist the returned `refresh` value from each refresh response and not keep reusing the original one, since it will be blacklisted after first use.
 
 #### Example JSON Request
 
@@ -137,9 +143,16 @@ Exchange a valid refresh token for a new access token.
 
 ```json
 {
-  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  "access": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
 }
 ```
+
+#### Error Responses
+
+| Status | When                                                             | Body                                                                                                                                                                     |
+| ------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `401`  | `refresh` is missing, malformed, expired, or already blacklisted | SimpleJWT's default `{"detail": "...", "code": "..."}` shape (not the `ResponseRenderer` envelope — token errors are raised before the view returns a normal `Response`) |
 
 ---
 
@@ -188,23 +201,23 @@ Returns the full profile of the currently authenticated user.
 
 #### Response
 
-| Field              | Type            | Description                                        |
-| ------------------ | --------------- | -------------------------------------------------- |
-| `uuid`             | UUID            | User identifier                                    |
-| `phone_number`     | string          | Phone number                                       |
-| `first_name`       | string          | First name                                         |
-| `last_name`        | string          | Last name                                          |
-| `date_of_birth`    | string \| null  | Date of birth                                      |
-| `age`              | integer \| null | Computed age                                       |
-| `gender`           | string          | `male` \| `female` \| `other`                      |
-| `profile_picture`  | URL \| null     | Profile image URL                                  |
-| `experience_level` | string \| null  | Free-text experience level                         |
-| `user_type`        | string          | `admin` \| `gym_owner` \| `trainer` \| `member`    |
-| `status`           | string          | `active` \| `disabled` \| `suspended` \| `deleted` |
-| `gym_id`           | UUID \| null    | Associated gym owner (set on trainer/member accounts; always `null` for the gym owner's own account) |
+| Field              | Type            | Description                                                                                                     |
+| ------------------ | --------------- | --------------------------------------------------------------------------------------------------------------- |
+| `uuid`             | UUID            | User identifier                                                                                                 |
+| `phone_number`     | string          | Phone number                                                                                                    |
+| `first_name`       | string          | First name                                                                                                      |
+| `last_name`        | string          | Last name                                                                                                       |
+| `date_of_birth`    | string \| null  | Date of birth                                                                                                   |
+| `age`              | integer \| null | Computed age                                                                                                    |
+| `gender`           | string          | `male` \| `female` \| `other`                                                                                   |
+| `profile_picture`  | URL \| null     | Profile image URL                                                                                               |
+| `experience_level` | string \| null  | Free-text experience level                                                                                      |
+| `user_type`        | string          | `admin` \| `gym_owner` \| `trainer` \| `member`                                                                 |
+| `status`           | string          | `active` \| `disabled` \| `suspended` \| `deleted`                                                              |
+| `gym_id`           | UUID \| null    | Associated gym owner (set on trainer/member accounts; always `null` for the gym owner's own account)            |
 | `gym_uuid`         | UUID \| null    | The `Gym` master record this account owns (`gym_details`) — only set for `gym_owner` accounts, `null` otherwise |
-| `trainer_id`       | UUID \| null    | Assigned trainer                                   |
-| `created_at`       | datetime        | Account creation timestamp                         |
+| `trainer_id`       | UUID \| null    | Assigned trainer                                                                                                |
+| `created_at`       | datetime        | Account creation timestamp                                                                                      |
 
 #### Example JSON Response
 
@@ -238,14 +251,14 @@ Partial update of the currently authenticated user's own profile. Editable field
 
 #### Request
 
-| Field              | Type           | Required | Description                                                         |
-| ------------------ | -------------- | -------- | -------------------------------------------------------------------- |
-| `first_name`       | string         | No       | First name                                                          |
-| `last_name`        | string         | No       | Last name                                                           |
-| `date_of_birth`    | string \| null | No       | Format: `YYYY-MM-DD`                                                |
-| `gender`           | string         | No       | `male` \| `female` \| `other`                                       |
-| `profile_picture`  | string \| null | No       | URL from `POST /api/upload-file/` (or `null` to clear)              |
-| `experience_level` | string \| null | No       | Free-text experience level                                          |
+| Field              | Type           | Required | Description                                            |
+| ------------------ | -------------- | -------- | ------------------------------------------------------ |
+| `first_name`       | string         | No       | First name                                             |
+| `last_name`        | string         | No       | Last name                                              |
+| `date_of_birth`    | string \| null | No       | Format: `YYYY-MM-DD`                                   |
+| `gender`           | string         | No       | `male` \| `female` \| `other`                          |
+| `profile_picture`  | string \| null | No       | URL from `POST /api/upload-file/` (or `null` to clear) |
+| `experience_level` | string \| null | No       | Free-text experience level                             |
 
 #### Example JSON Request
 
@@ -371,12 +384,12 @@ Create a new gym master record.
 
 #### Request
 
-| Field         | Type           | Required | Description                            |
-| ------------- | -------------- | -------- | ---------------------------------------- |
-| `name`        | string         | Yes      | Gym name                                |
-| `gym_picture` | string \| null | No       | URL from `POST /api/upload-file/`       |
-| `latitude`    | decimal        | Yes      | Gym latitude (up to 9,6 precision)       |
-| `longitude`   | decimal        | Yes      | Gym longitude (up to 9,6 precision)      |
+| Field         | Type           | Required | Description                         |
+| ------------- | -------------- | -------- | ----------------------------------- |
+| `name`        | string         | Yes      | Gym name                            |
+| `gym_picture` | string \| null | No       | URL from `POST /api/upload-file/`   |
+| `latitude`    | decimal        | Yes      | Gym latitude (up to 9,6 precision)  |
+| `longitude`   | decimal        | Yes      | Gym longitude (up to 9,6 precision) |
 
 #### Example JSON Request
 
@@ -430,12 +443,12 @@ Full update of a gym record.
 
 #### Request
 
-| Field         | Type           | Required | Description                            |
-| ------------- | -------------- | -------- | ---------------------------------------- |
-| `name`        | string         | Yes      | Gym name                                |
-| `gym_picture` | string \| null | No       | URL from `POST /api/upload-file/`       |
-| `latitude`    | decimal        | Yes      | Gym latitude (up to 9,6 precision)       |
-| `longitude`   | decimal        | Yes      | Gym longitude (up to 9,6 precision)      |
+| Field         | Type           | Required | Description                         |
+| ------------- | -------------- | -------- | ----------------------------------- |
+| `name`        | string         | Yes      | Gym name                            |
+| `gym_picture` | string \| null | No       | URL from `POST /api/upload-file/`   |
+| `latitude`    | decimal        | Yes      | Gym latitude (up to 9,6 precision)  |
+| `longitude`   | decimal        | Yes      | Gym longitude (up to 9,6 precision) |
 
 #### Example JSON Request
 
@@ -944,10 +957,10 @@ response shape.
 
 #### Request
 
-| Field              | Type           | Required | Description                                              |
-| ------------------ | -------------- | -------- | --------------------------------------------------------- |
+| Field              | Type           | Required | Description                                                |
+| ------------------ | -------------- | -------- | ---------------------------------------------------------- |
 | `phone_number`     | string         | Yes      | Must be unique, max 15 chars — `409` if already registered |
-| `password`         | string         | Yes      | Strong password                                           |
+| `password`         | string         | Yes      | Strong password                                            |
 | `first_name`       | string         | Yes      | First name                                                 |
 | `last_name`        | string         | Yes      | Last name                                                  |
 | `date_of_birth`    | string \| null | No       | Format: `YYYY-MM-DD`                                       |
@@ -971,21 +984,17 @@ response shape.
 
 #### Example JSON Response
 
+**Note:** the create response is serialized with the same write-facing serializer used for the request (`TrainerCreateSerializer`), not the full detail shape — it does **not** include `uuid`, `age`, `user_type`, `status`, `gym_id`, or `created_at`. To get the full detail record (including the new trainer's `uuid`) after creation, follow up with `GET /users/trainers/` and match on `phone_number`.
+
 ```json
 {
-  "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
   "phone_number": "9000000001",
   "first_name": "Priya",
   "last_name": "Nair",
   "date_of_birth": "1995-07-12",
-  "age": 30,
   "gender": "female",
   "profile_picture": null,
-  "experience_level": "3 years",
-  "user_type": "trainer",
-  "status": "active",
-  "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "created_at": "2026-06-30T10:00:00Z"
+  "experience_level": "3 years"
 }
 ```
 
@@ -1206,17 +1215,17 @@ response shape.
 
 #### Request
 
-| Field              | Type           | Required | Description                                              |
+| Field              | Type           | Required | Description                                                |
 | ------------------ | -------------- | -------- | ---------------------------------------------------------- |
 | `phone_number`     | string         | Yes      | Must be unique, max 15 chars — `409` if already registered |
-| `password`         | string         | Yes      | Strong password                                             |
-| `first_name`       | string         | Yes      | First name                                                  |
-| `last_name`        | string         | Yes      | Last name                                                   |
-| `date_of_birth`    | string \| null | No       | Format: `YYYY-MM-DD`                                        |
-| `gender`           | string         | Yes      | `male` \| `female` \| `other`                               |
-| `profile_picture`  | string \| null | No       | URL from `POST /api/upload-file/`                           |
-| `experience_level` | string \| null | No       | Free-text experience level                                  |
-| `trainer_uuid`     | UUID \| null   | No       | UUID of a trainer in the same gym                           |
+| `password`         | string         | Yes      | Strong password                                            |
+| `first_name`       | string         | Yes      | First name                                                 |
+| `last_name`        | string         | Yes      | Last name                                                  |
+| `date_of_birth`    | string \| null | No       | Format: `YYYY-MM-DD`                                       |
+| `gender`           | string         | Yes      | `male` \| `female` \| `other`                              |
+| `profile_picture`  | string \| null | No       | URL from `POST /api/upload-file/`                          |
+| `experience_level` | string \| null | No       | Free-text experience level                                 |
+| `trainer_uuid`     | UUID \| null   | No       | UUID of a trainer in the same gym                          |
 
 #### Example JSON Request
 
@@ -1235,22 +1244,17 @@ response shape.
 
 #### Example JSON Response
 
+**Note:** like `POST /users/trainers/`, the create response is serialized with the write-facing `MemberCreateSerializer`, not the full detail shape — it does **not** include `uuid`, `age`, `user_type`, `status`, `gym_id`, `trainer_id`, or `created_at` (and `trainer_uuid` is write-only, so it's echoed back on neither). Follow up with `GET /users/members/` and match on `phone_number` to get the full detail record.
+
 ```json
 {
-  "uuid": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
   "phone_number": "9111111111",
   "first_name": "Amit",
   "last_name": "Verma",
   "date_of_birth": "2000-11-05",
-  "age": 25,
   "gender": "male",
   "profile_picture": null,
-  "experience_level": "Beginner",
-  "user_type": "member",
-  "status": "active",
-  "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "created_at": "2026-06-30T10:00:00Z"
+  "experience_level": "Beginner"
 }
 ```
 
@@ -1558,17 +1562,17 @@ Retrieve the authenticated member's own profile.
 
 #### Response
 
-| Field               | Type           | Description                   |
-| ------------------- | -------------- | ------------------------------ |
-| `uuid`              | UUID           | Member identifier (read-only) |
-| `phone_number`      | string         | Phone number (read-only)      |
-| `first_name`        | string         | First name                    |
-| `last_name`         | string         | Last name                     |
-| `profile_picture`   | URL \| null    | Profile image URL             |
-| `date_of_birth`     | string         | Date of birth (read-only)     |
-| `age`               | integer        | Computed age (read-only)      |
-| `gender`            | string         | `male` \| `female` \| `other` |
-| `experience_level`  | string \| null | Free-text experience level    |
+| Field              | Type           | Description                   |
+| ------------------ | -------------- | ----------------------------- |
+| `uuid`             | UUID           | Member identifier (read-only) |
+| `phone_number`     | string         | Phone number (read-only)      |
+| `first_name`       | string         | First name                    |
+| `last_name`        | string         | Last name                     |
+| `profile_picture`  | URL \| null    | Profile image URL             |
+| `date_of_birth`    | string         | Date of birth (read-only)     |
+| `age`              | integer        | Computed age (read-only)      |
+| `gender`           | string         | `male` \| `female` \| `other` |
+| `experience_level` | string \| null | Free-text experience level    |
 
 #### Example JSON Response
 
@@ -1596,13 +1600,13 @@ Update the authenticated member's own profile. Only editable fields can be chang
 
 #### Request
 
-| Field               | Type           | Required | Description                                            |
-| ------------------- | -------------- | -------- | -------------------------------------------------------- |
-| `first_name`        | string         | No       | First name                                             |
-| `last_name`         | string         | No       | Last name                                              |
-| `profile_picture`   | string \| null | No       | URL from `POST /api/upload-file/` (or `null` to clear) |
-| `gender`            | string         | No       | `male` \| `female` \| `other`                          |
-| `experience_level`  | string \| null | No       | Free-text experience level                             |
+| Field              | Type           | Required | Description                                            |
+| ------------------ | -------------- | -------- | ------------------------------------------------------ |
+| `first_name`       | string         | No       | First name                                             |
+| `last_name`        | string         | No       | Last name                                              |
+| `profile_picture`  | string \| null | No       | URL from `POST /api/upload-file/` (or `null` to clear) |
+| `gender`           | string         | No       | `male` \| `female` \| `other`                          |
+| `experience_level` | string \| null | No       | Free-text experience level                             |
 
 #### Example JSON Request
 
@@ -1713,6 +1717,14 @@ Create a new membership record for a member.
   "updated_at": "2026-06-30T10:00:00Z"
 }
 ```
+
+#### Error Responses
+
+| Status | When                                                                                                                                   | Body                                                                                         |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `400`  | `member` is not `user_type == member`                                                                                                  | `{"member": ["User must be of type MEMBER."]}`                                               |
+| `400`  | `end_date` before `start_date`                                                                                                         | `{"end_date": ["end_date must be on or after start_date."]}`                                 |
+| `400`  | **Create only** — the member already has an `active`-status membership whose date range overlaps the submitted `start_date`/`end_date` | `{"non_field_errors": ["An active membership already exists overlapping this date range."]}` |
 
 ---
 
@@ -1956,8 +1968,8 @@ gym (`404` otherwise); an admin may target any member.
 
 #### Request
 
-| Field        | Type    | Required | Description                                                       |
-| ------------ | ------- | -------- | --------------------------------------------------------------------|
+| Field        | Type    | Required | Description                                                        |
+| ------------ | ------- | -------- | ------------------------------------------------------------------ |
 | `member_id`  | UUID    | Yes      | Member's UUID                                                      |
 | `date`       | string  | Yes      | Accepted and validated, but **not persisted** anywhere (see above) |
 | `amount`     | decimal | Yes      | Written to the new `Membership.amount_paid` (min 0.01)             |
@@ -1968,20 +1980,22 @@ gym (`404` otherwise); an admin may target any member.
 
 #### Response
 
-`HTTP 201`. The response shape is the newly-created `Membership` record, reshaped:
+**Known bug — this endpoint currently errors on success.** The `Membership` row is created and the member's tracking fields are updated _before_ the response is built, but `MemberPaymentResponseSerializer.amount` (`accounts/serializers.py:726`) has no `source=` and `Membership` has no `amount` attribute (only `amount_paid`) — serializing the response raises an `AttributeError`, so the client currently receives an unhandled `HTTP 500` rather than the `201` documented below, even though the `Membership` was in fact created. The table/example below describe the _intended_ shape (and match `MembershipSerializer`'s equivalent GET-side fields), not what is currently returned.
 
-| Field         | Type    | Description                                                       |
-| ------------- | ------- | ---------------------------------------------------------------------|
-| `uuid`        | UUID    | New `Membership` record's UUID                                    |
-| `member_id`   | UUID    | Member UUID                                                        |
-| `amount`      | decimal | Same value as `amount_paid` below (submitted `amount`)             |
-| `amount_paid` | decimal | `Membership.amount_paid` — the submitted `amount`                  |
-| `date`        | string  | **Not** the submitted `date` — this is `start_date` echoed back    |
-| `start_date`  | string  | Membership start                                                   |
-| `end_date`    | string  | Membership end                                                     |
-| `mode`        | string  | `Membership.payment_mode` (`cash` \| `online`, lowercased)          |
-| `plan`        | string  | Plan name                                                           |
-| `status`      | string  | New membership's status — always `active`                           |
+`HTTP 201` (intended). The response shape is the newly-created `Membership` record, reshaped:
+
+| Field         | Type    | Description                                                     |
+| ------------- | ------- | --------------------------------------------------------------- |
+| `uuid`        | UUID    | New `Membership` record's UUID                                  |
+| `member_id`   | UUID    | Member UUID                                                     |
+| `amount`      | decimal | Same value as `amount_paid` below (submitted `amount`)          |
+| `amount_paid` | decimal | `Membership.amount_paid` — the submitted `amount`               |
+| `date`        | string  | **Not** the submitted `date` — this is `start_date` echoed back |
+| `start_date`  | string  | Membership start                                                |
+| `end_date`    | string  | Membership end                                                  |
+| `mode`        | string  | `Membership.payment_mode` (`cash` \| `online`, lowercased)      |
+| `plan`        | string  | Plan name                                                       |
+| `status`      | string  | New membership's status — always `active`                       |
 
 #### Example JSON Request
 
@@ -1997,7 +2011,7 @@ gym (`404` otherwise); an admin may target any member.
 }
 ```
 
-#### Example JSON Response
+#### Example JSON Response (intended shape — see bug note above; actual current response is an empty `HTTP 500` body)
 
 ```json
 {
@@ -2008,7 +2022,7 @@ gym (`404` otherwise); an admin may target any member.
   "date": "2026-07-01",
   "start_date": "2026-07-01",
   "end_date": "2026-07-31",
-  "mode": "Cash",
+  "mode": "cash",
   "plan": "Monthly",
   "status": "active"
 }
@@ -2032,29 +2046,36 @@ to the standard paginated envelope instead (`count`/`next`/`previous` populated,
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `member_id` | UUID    | No       | Filter by member UUID                                  |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `member_id` | UUID    | No       | Filter by member UUID                                 |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Example JSON Response
 
+Like every other endpoint, this is still wrapped by `ResponseRenderer` — with `page_size` omitted/`0` (the default), the list is not paginated, so `data` holds the full array with no `count`/`next`/`previous` alongside it:
+
 ```json
-[
-  {
-    "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012",
-    "member": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
-    "start_date": "2026-07-01",
-    "end_date": "2026-07-31",
-    "plan": "Monthly",
-    "amount_paid": "1500.00",
-    "payment_mode": "cash",
-    "status": "active",
-    "created_at": "2026-06-30T10:00:00Z",
-    "updated_at": "2026-06-30T10:00:00Z"
-  }
-]
+{
+  "data": [
+    {
+      "uuid": "c3d4e5f6-a7b8-9012-cdef-123456789012",
+      "member": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+      "start_date": "2026-07-01",
+      "end_date": "2026-07-31",
+      "plan": "Monthly",
+      "amount_paid": "1500.00",
+      "payment_mode": "cash",
+      "status": "active",
+      "created_at": "2026-06-30T10:00:00Z",
+      "updated_at": "2026-06-30T10:00:00Z"
+    }
+  ],
+  "message": "",
+  "status": 200,
+  "time": "2026-06-30T10:00:00Z"
+}
 ```
 
 ---
@@ -2097,29 +2118,29 @@ Check the authenticated member/trainer in.
 
 #### Request
 
-| Field       | Type     | Required     | Description                                                          |
-| ----------- | -------- | ------------ | ------------------------------------------------------------------ |
-| `timestamp` | datetime | Yes          | Check-in time (ISO-8601)                                          |
-| `lat`       | decimal  | Yes          | Latitude (up to 9,6 precision)                                     |
-| `lng`       | decimal  | Yes          | Longitude (up to 9,6 precision)                                    |
+| Field       | Type     | Required     | Description                                                                      |
+| ----------- | -------- | ------------ | -------------------------------------------------------------------------------- |
+| `timestamp` | datetime | Yes          | Check-in time (ISO-8601)                                                         |
+| `lat`       | decimal  | Yes          | Latitude (up to 9,6 precision)                                                   |
+| `lng`       | decimal  | Yes          | Longitude (up to 9,6 precision)                                                  |
 | `photo`     | string   | Trainer only | URL from `POST /api/upload-file/` — required for a trainer, ignored for a member |
 
 #### Response
 
-| Field             | Type             | Description                                        |
-| ------------------ | ---------------- | ---------------------------------------------------- |
-| `uuid`             | UUID             | Attendance record UUID                              |
-| `user`             | UUID             | Member/trainer UUID (the caller)                     |
-| `user_name`        | string           | Caller's full name                                   |
-| `user_type`        | string           | `member` \| `trainer`                                |
-| `check_in`         | datetime         | Check-in timestamp                                   |
-| `check_out`        | datetime \| null | Check-out timestamp — always `null` for a member     |
-| `check_in_lat`     | decimal          | Check-in latitude                                     |
-| `check_in_lng`     | decimal          | Check-in longitude                                    |
-| `check_out_lat`    | decimal \| null  | Check-out latitude — always `null` for a member       |
-| `check_out_lng`    | decimal \| null  | Check-out longitude — always `null` for a member      |
-| `check_in_photo`   | URL \| null      | Trainer check-in photo; always `null` for a member    |
-| `check_out_photo`  | URL \| null      | Trainer check-out photo; always `null` for a member   |
+| Field             | Type             | Description                                         |
+| ----------------- | ---------------- | --------------------------------------------------- |
+| `uuid`            | UUID             | Attendance record UUID                              |
+| `user`            | UUID             | Member/trainer UUID (the caller)                    |
+| `user_name`       | string           | Caller's full name                                  |
+| `user_type`       | string           | `member` \| `trainer`                               |
+| `check_in`        | datetime         | Check-in timestamp                                  |
+| `check_out`       | datetime \| null | Check-out timestamp — always `null` for a member    |
+| `check_in_lat`    | decimal          | Check-in latitude                                   |
+| `check_in_lng`    | decimal          | Check-in longitude                                  |
+| `check_out_lat`   | decimal \| null  | Check-out latitude — always `null` for a member     |
+| `check_out_lng`   | decimal \| null  | Check-out longitude — always `null` for a member    |
+| `check_in_photo`  | URL \| null      | Trainer check-in photo; always `null` for a member  |
+| `check_out_photo` | URL \| null      | Trainer check-out photo; always `null` for a member |
 
 #### Example JSON Request (member)
 
@@ -2152,13 +2173,13 @@ Check the authenticated member/trainer in.
 
 #### Error responses
 
-| Status | When                                                    | Body                                                                                                  |
-| ------ | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `400`  | Trainer omitted `photo`                                 | message: `"A photo is required for check-in."`                                                        |
-| `400`  | Trainer already has an open check-in                    | message: `"You're already checked in."`                                                               |
-| `400`  | Member already checked in on this `timestamp`'s date     | message: `"You've already checked in today."`                                                         |
-| `400`  | `lat`/`lng` is more than 50m from the caller's gym       | message: `"You are <N>m away from your gym — check-in/out must be within 50m of the gym location."`  |
-| `400`  | Caller's gym has no registered location                  | message: `"Your gym has no registered location. Contact your gym owner."`                             |
+| Status | When                                                 | Body                                                                                                |
+| ------ | ---------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `400`  | Trainer omitted `photo`                              | message: `"A photo is required for check-in."`                                                      |
+| `400`  | Trainer already has an open check-in                 | message: `"You're already checked in."`                                                             |
+| `400`  | Member already checked in on this `timestamp`'s date | message: `"You've already checked in today."`                                                       |
+| `400`  | `lat`/`lng` is more than 50m from the caller's gym   | message: `"You are <N>m away from your gym — check-in/out must be within 50m of the gym location."` |
+| `400`  | Caller's gym has no registered location              | message: `"Your gym has no registered location. Contact your gym owner."`                           |
 
 ---
 
@@ -2228,12 +2249,12 @@ holding one page).
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `user_id`   | UUID    | No       | Filter by member/trainer UUID (gym owner)               |
-| `date`      | string  | No       | Filter by date (`YYYY-MM-DD`)                            |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `user_id`   | UUID    | No       | Filter by member/trainer UUID (gym owner)             |
+| `date`      | string  | No       | Filter by date (`YYYY-MM-DD`)                         |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Example JSON Response
 
@@ -2280,19 +2301,19 @@ holding one page).
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `days`      | integer | No       | Inactivity threshold in days (default: `7`)             |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `days`      | integer | No       | Inactivity threshold in days (default: `7`)           |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Response
 
-| Field           | Type           | Description                                 |
-| --------------- | -------------- | ------------------------------------------- |
-| `member_id`     | UUID           | Member UUID                                 |
-| `name`          | string         | Full name                                   |
-| `last_visit`    | string \| null | Last check-in date; `null` if never visited |
+| Field           | Type           | Description                                                                                                                                               |
+| --------------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `member_id`     | UUID           | Member UUID                                                                                                                                               |
+| `name`          | string         | Full name                                                                                                                                                 |
+| `last_visit`    | string \| null | Last check-in date; `null` if never visited                                                                                                               |
 | `days_inactive` | integer        | Days since last visit; for a member who has **never** visited, this is not a sentinel — it's just the `?days=` threshold used for the query (default `7`) |
 
 #### Example JSON Response
@@ -2331,10 +2352,10 @@ holding one page).
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Response
 
@@ -2381,11 +2402,11 @@ holding one page).
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `days`      | integer | No       | Lookahead window in days (default: `7`)                 |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `days`      | integer | No       | Lookahead window in days (default: `7`)               |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Response
 
@@ -2437,21 +2458,21 @@ holding one page).
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `days`      | integer | No       | Lookahead window in days (default: `7`)                 |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `days`      | integer | No       | Lookahead window in days (default: `7`)               |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Response
 
-| Field           | Type           | Description                                     |
-| ---------------- | -------------- | ------------------------------------------------- |
-| `gym_owner_id`  | UUID           | Gym owner UUID                                  |
-| `name`          | string         | Full name                                       |
-| `gym_name`      | string \| null | Name of the gym they own                        |
-| `expiry_date`   | string         | Subscription end date                           |
-| `days_left`     | integer        | Days until expiry (negative if already expired) |
+| Field          | Type           | Description                                     |
+| -------------- | -------------- | ----------------------------------------------- |
+| `gym_owner_id` | UUID           | Gym owner UUID                                  |
+| `name`         | string         | Full name                                       |
+| `gym_name`     | string \| null | Name of the gym they own                        |
+| `expiry_date`  | string         | Subscription end date                           |
+| `days_left`    | integer        | Days until expiry (negative if already expired) |
 
 #### Example JSON Response
 
@@ -2480,13 +2501,13 @@ owner sees their own gym's revenue (member → gym-owner payments) — same scop
 
 #### Response
 
-| Field                    | Type    | Description                                                          |
-| ------------------------- | ------- | ----------------------------------------------------------------------- |
-| `total_revenue`          | decimal | Sum of `paid` payments this calendar month                          |
+| Field                    | Type    | Description                                                                                                          |
+| ------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------- |
+| `total_revenue`          | decimal | Sum of `paid` payments this calendar month                                                                           |
 | `monthly_growth_percent` | decimal | % change vs. last calendar month's total (`100.0` if last month was `0` and this month isn't; `0.0` if both are `0`) |
-| `total_transactions`     | integer | Count of `paid` payments this calendar month                        |
-| `pending_amount`         | decimal | Sum of all currently `pending` payments (not month-scoped — current outstanding total) |
-| `method_breakdown`       | array   | `{method, amount}` per payment mode, this calendar month, paid only |
+| `total_transactions`     | integer | Count of `paid` payments this calendar month                                                                         |
+| `pending_amount`         | decimal | Sum of all currently `pending` payments (not month-scoped — current outstanding total)                               |
+| `method_breakdown`       | array   | `{method, amount}` per payment mode, this calendar month, paid only                                                  |
 
 #### Example JSON Response
 
@@ -2580,36 +2601,36 @@ Push client-side changes to the server. Conflicts are resolved by comparing `upd
 
 **Attendance data fields:**
 
-| Field           | Type             | Description                         |
-| --------------- | ---------------- | ----------------------------------- |
-| `uuid`          | UUID             | Required for `update` and `delete`  |
+| Field           | Type             | Description                                                                                                                                                                                         |
+| --------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uuid`          | UUID             | Required for `update` and `delete`                                                                                                                                                                  |
 | `user`          | UUID             | Member/trainer UUID — assign as `user_id` (see the request example below), not `user`; the view sets model fields directly from the payload, and `user` (the FK accessor) rejects a raw UUID string |
-| `check_in`      | datetime         | Check-in timestamp                  |
-| `check_out`     | datetime \| null | Check-out timestamp                 |
-| `check_in_lat`  | decimal          | Check-in latitude — required on the model, never `null` |
-| `check_in_lng`  | decimal          | Check-in longitude — required on the model, never `null` |
-| `check_out_lat` | decimal \| null  | Check-out latitude                  |
-| `check_out_lng` | decimal \| null  | Check-out longitude                 |
-| `updated_at`    | datetime         | Client-side last modified timestamp |
+| `check_in`      | datetime         | Check-in timestamp                                                                                                                                                                                  |
+| `check_out`     | datetime \| null | Check-out timestamp                                                                                                                                                                                 |
+| `check_in_lat`  | decimal          | Check-in latitude — required on the model, never `null`                                                                                                                                             |
+| `check_in_lng`  | decimal          | Check-in longitude — required on the model, never `null`                                                                                                                                            |
+| `check_out_lat` | decimal \| null  | Check-out latitude                                                                                                                                                                                  |
+| `check_out_lng` | decimal \| null  | Check-out longitude                                                                                                                                                                                 |
+| `updated_at`    | datetime         | Client-side last modified timestamp                                                                                                                                                                 |
 
 #### Response
 
-| Field             | Type    | Description                                 |
-| ----------------- | ------- | ------------------------------------------- |
-| `created`         | integer | Records created                             |
-| `updated`         | integer | Records updated                             |
-| `deleted`         | integer | Records deleted                             |
-| `skipped`         | integer | Records skipped (conflict: server is newer) |
-| `errors`          | array   | List of error objects — shape varies by failure kind, see below |
+| Field     | Type    | Description                                                     |
+| --------- | ------- | --------------------------------------------------------------- |
+| `created` | integer | Records created                                                 |
+| `updated` | integer | Records updated                                                 |
+| `deleted` | integer | Records deleted                                                 |
+| `skipped` | integer | Records skipped (conflict: server is newer)                     |
+| `errors`  | array   | List of error objects — shape varies by failure kind, see below |
 
 `errors[]` items are **not** uniformly shaped — the key set depends on which check
 failed:
 
-| Cause                                          | Item shape                                             |
-| ----------------------------------------------- | -------------------------------------------------------- |
-| Unknown/unsupported `model`                     | `{"model": "<model>", "error": "Unknown or unsupported model."}` (no `action` key) |
-| Unknown `action` (not `create`/`update`/`delete`) | `{"action": "<action>", "error": "Unknown action."}` (no `model` key) |
-| Exception while creating/updating/deleting       | `{"model": "<model>", "action": "<action>", "error": "<exception message>"}` (all three keys) |
+| Cause                                             | Item shape                                                                                    |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Unknown/unsupported `model`                       | `{"model": "<model>", "error": "Unknown or unsupported model."}` (no `action` key)            |
+| Unknown `action` (not `create`/`update`/`delete`) | `{"action": "<action>", "error": "Unknown action."}` (no `model` key)                         |
+| Exception while creating/updating/deleting        | `{"model": "<model>", "action": "<action>", "error": "<exception message>"}` (all three keys) |
 
 #### Example JSON Request
 
@@ -2672,16 +2693,16 @@ paginated envelope at the same key: `changes.attendance = {"count", "next",
 **Query parameters:**
 
 | Param       | Type     | Required | Description                                                 |
-| ----------- | -------- | -------- | ------------------------------------------------------------ |
-| `user_id`   | UUID     | No       | Filter records by member UUID                                |
-| `since`     | datetime | No       | ISO-8601 timestamp; returns records updated after this time  |
-| `page`      | integer  | No       | Page number (only used when `page_size` is set)              |
-| `page_size` | integer  | No       | Records per page, max `100`; `0`/omitted = return all        |
+| ----------- | -------- | -------- | ----------------------------------------------------------- |
+| `user_id`   | UUID     | No       | Filter records by member UUID                               |
+| `since`     | datetime | No       | ISO-8601 timestamp; returns records updated after this time |
+| `page`      | integer  | No       | Page number (only used when `page_size` is set)             |
+| `page_size` | integer  | No       | Records per page, max `100`; `0`/omitted = return all       |
 
 #### Response
 
-| Field                | Type            | Description                                                             |
-| -------------------- | --------------- | ------------------------------------------------------------------------ |
+| Field                | Type            | Description                                                                                         |
+| -------------------- | --------------- | --------------------------------------------------------------------------------------------------- |
 | `changes.attendance` | array \| object | List of attendance records updated since `since`, or a paginated envelope if `page_size` was passed |
 
 #### Example JSON Response
@@ -2721,33 +2742,33 @@ previous call. Mirrors the local app's `workout_sessions` / `session_exercises` 
 
 #### Request
 
-| Field                          | Type            | Required | Description                                    |
-| ------------------------------- | --------------- | -------- | ------------------------------------------------- |
-| `sessions`                     | array           | Yes      | Full list of the user's workout sessions          |
-| `sessions[].session_date`      | string          | Yes      | `YYYY-MM-DD`                                      |
-| `sessions[].duration_minutes`  | integer         | No       | Default `0`                                       |
-| `sessions[].notes`             | string \| null  | No       |                                                    |
-| `sessions[].calories_burned`   | decimal \| null | No       |                                                    |
-| `sessions[].is_rest_day`       | boolean         | No       | Default `false`                                   |
-| `sessions[].exercises`         | array           | No       | See below                                         |
-| `sessions[].rest_breaks`       | array           | No       | `{duration_minutes, sort_index}` objects          |
-| `exercises[].exercise_name`    | string          | Yes      |                                                    |
-| `exercises[].body_part`        | string \| null  | No       |                                                    |
-| `exercises[].muscle`           | string \| null  | No       |                                                    |
-| `exercises[].is_unilateral`    | boolean         | No       | Default `false`                                   |
-| `exercises[].set_type`         | string          | No       | Default `"normal"`                                |
-| `exercises[].superset_group`   | integer \| null | No       |                                                    |
-| `exercises[].sets`             | array           | No       | See below                                         |
-| `sets[].set_number`            | integer         | No       | Defaults to 1-based position in the array         |
-| `sets[].reps`                  | integer \| null | No       |                                                    |
-| `sets[].weight_kg`             | decimal \| null | No       |                                                    |
-| `sets[].duration_seconds`      | integer \| null | No       |                                                    |
-| `sets[].speed_kmh`             | decimal \| null | No       |                                                    |
+| Field                         | Type            | Required | Description                               |
+| ----------------------------- | --------------- | -------- | ----------------------------------------- |
+| `sessions`                    | array           | Yes      | Full list of the user's workout sessions  |
+| `sessions[].session_date`     | string          | Yes      | `YYYY-MM-DD`                              |
+| `sessions[].duration_minutes` | integer         | No       | Default `0`                               |
+| `sessions[].notes`            | string \| null  | No       |                                           |
+| `sessions[].calories_burned`  | decimal \| null | No       |                                           |
+| `sessions[].is_rest_day`      | boolean         | No       | Default `false`                           |
+| `sessions[].exercises`        | array           | No       | See below                                 |
+| `sessions[].rest_breaks`      | array           | No       | `{duration_minutes, sort_index}` objects  |
+| `exercises[].exercise_name`   | string          | Yes      |                                           |
+| `exercises[].body_part`       | string \| null  | No       |                                           |
+| `exercises[].muscle`          | string \| null  | No       |                                           |
+| `exercises[].is_unilateral`   | boolean         | No       | Default `false`                           |
+| `exercises[].set_type`        | string          | No       | Default `"normal"`                        |
+| `exercises[].superset_group`  | integer \| null | No       |                                           |
+| `exercises[].sets`            | array           | No       | See below                                 |
+| `sets[].set_number`           | integer         | No       | Defaults to 1-based position in the array |
+| `sets[].reps`                 | integer \| null | No       |                                           |
+| `sets[].weight_kg`            | decimal \| null | No       |                                           |
+| `sets[].duration_seconds`     | integer \| null | No       |                                           |
+| `sets[].speed_kmh`            | decimal \| null | No       |                                           |
 
 #### Response
 
-| Field             | Type    | Description                                    |
-| ------------------ | ------- | ------------------------------------------------- |
+| Field             | Type    | Description                                               |
+| ----------------- | ------- | --------------------------------------------------------- |
 | `synced_sessions` | integer | Count of sessions now stored for this user (post-replace) |
 
 #### Example JSON Request
@@ -2785,6 +2806,165 @@ previous call. Mirrors the local app's `workout_sessions` / `session_exercises` 
 ```json
 {
   "synced_sessions": 1
+}
+```
+
+---
+
+### GET `/api/backup/workouts/download/`
+
+Returns the authenticated user's **entire** server-side workout history, nested in the
+same shape `/api/backup/workouts/upload/` accepts.
+
+**Permission:** Authenticated (any role)
+
+#### Response
+
+| Field                         | Type            | Description                              |
+| ------------------------------ | --------------- | ----------------------------------------- |
+| `sessions`                    | array           | Full list of the user's workout sessions, ordered by `session_date` ascending |
+| `sessions[].session_date`     | string          | `YYYY-MM-DD`                              |
+| `sessions[].duration_minutes` | integer         |                                            |
+| `sessions[].notes`            | string \| null  |                                            |
+| `sessions[].calories_burned`  | decimal \| null |                                            |
+| `sessions[].is_rest_day`      | boolean         |                                            |
+| `sessions[].exercises`        | array           | Same shape as the upload request's `exercises[]` |
+| `sessions[].rest_breaks`      | array           | `{duration_minutes, sort_index}` objects  |
+
+#### Example JSON Response
+
+```json
+{
+  "sessions": [
+    {
+      "session_date": "2026-01-15",
+      "duration_minutes": 45,
+      "notes": "Leg day",
+      "calories_burned": 320.5,
+      "is_rest_day": false,
+      "exercises": [
+        {
+          "exercise_name": "Barbell Squat",
+          "body_part": "Legs",
+          "muscle": "Quads",
+          "is_unilateral": false,
+          "set_type": "normal",
+          "superset_group": null,
+          "sets": [
+            { "set_number": 1, "reps": 10, "weight_kg": 60.0, "duration_seconds": null, "speed_kmh": null },
+            { "set_number": 2, "reps": 8, "weight_kg": 65.0, "duration_seconds": null, "speed_kmh": null }
+          ]
+        }
+      ],
+      "rest_breaks": [{ "duration_minutes": 2, "sort_index": 0 }]
+    }
+  ]
+}
+```
+
+---
+
+### POST `/api/backup/body-measurements/upload/`
+
+Replaces the authenticated user's **entire** server-side body-measurement history with
+what's in the request body — whole-history replace, same rationale as
+`/api/backup/workouts/upload/`. Mirrors the local app's `user_profiles` table.
+
+**Permission:** Authenticated (any role)
+
+#### Request
+
+| Field                          | Type            | Required | Description      |
+| ------------------------------- | --------------- | -------- | ----------------- |
+| `measurements`                 | array           | Yes      | Full list of the user's measurement records |
+| `measurements[].age`           | integer \| null | No       |                    |
+| `measurements[].gender`        | string \| null  | No       |                    |
+| `measurements[].is_correction` | boolean         | No       | Default `false`   |
+| `measurements[].weight_kg`     | decimal \| null | No       |                    |
+| `measurements[].height_cm`     | decimal \| null | No       |                    |
+| `measurements[].chest_cm`      | decimal \| null | No       |                    |
+| `measurements[].waist_cm`      | decimal \| null | No       |                    |
+| `measurements[].biceps_cm`     | decimal \| null | No       |                    |
+| `measurements[].thighs_cm`     | decimal \| null | No       |                    |
+| `measurements[].neck_cm`       | decimal \| null | No       |                    |
+| `measurements[].hip_cm`        | decimal \| null | No       |                    |
+| `measurements[].body_fat_percent` | decimal \| null | No  |                    |
+| `measurements[].recorded_at`   | datetime        | Yes      |                    |
+
+#### Response
+
+| Field                  | Type    | Description                                                    |
+| ----------------------- | ------- | ---------------------------------------------------------------- |
+| `synced_measurements`  | integer | Count of measurement records now stored for this user (post-replace) |
+
+#### Example JSON Request
+
+```json
+{
+  "measurements": [
+    {
+      "age": 28,
+      "gender": "male",
+      "is_correction": false,
+      "weight_kg": 72.5,
+      "height_cm": 178.0,
+      "chest_cm": 100.0,
+      "waist_cm": 82.0,
+      "biceps_cm": 35.0,
+      "thighs_cm": 55.0,
+      "neck_cm": 38.0,
+      "hip_cm": 95.0,
+      "body_fat_percent": 15.5,
+      "recorded_at": "2026-01-15T08:30:00Z"
+    }
+  ]
+}
+```
+
+#### Example JSON Response
+
+```json
+{
+  "synced_measurements": 1
+}
+```
+
+---
+
+### GET `/api/backup/body-measurements/download/`
+
+Returns the authenticated user's **entire** server-side body-measurement history,
+ordered by `recorded_at` descending.
+
+**Permission:** Authenticated (any role)
+
+#### Response
+
+| Field           | Type  | Description                                          |
+| ---------------- | ----- | ------------------------------------------------------- |
+| `measurements`  | array | Full list of the user's measurement records, same field shape as the upload request |
+
+#### Example JSON Response
+
+```json
+{
+  "measurements": [
+    {
+      "age": 28,
+      "gender": "male",
+      "is_correction": false,
+      "weight_kg": 72.5,
+      "height_cm": 178.0,
+      "chest_cm": 100.0,
+      "waist_cm": 82.0,
+      "biceps_cm": 35.0,
+      "thighs_cm": 55.0,
+      "neck_cm": 38.0,
+      "hip_cm": 95.0,
+      "body_fat_percent": 15.5,
+      "recorded_at": "2026-01-15T08:30:00Z"
+    }
+  ]
 }
 ```
 
@@ -2882,8 +3062,8 @@ Uploads an image and returns its URL. This is the generic first step for every i
 #### Request
 
 | Field  | Type | Required | Description                                                                  |
-| ------ | ---- | -------- | ----------------------------------------------------------------------------- |
-| `file` | file | Yes      | Image to upload. Allowed types: `jpg`, `jpeg`, `png`, `webp`. Max size: 5MB.  |
+| ------ | ---- | -------- | ---------------------------------------------------------------------------- |
+| `file` | file | Yes      | Image to upload. Allowed types: `jpg`, `jpeg`, `png`, `webp`. Max size: 5MB. |
 
 #### Example JSON Response
 
@@ -2895,9 +3075,9 @@ Uploads an image and returns its URL. This is the generic first step for every i
 
 **Error Responses:**
 
-| Status            | When                                              |
-| ----------------- | -------------------------------------------------- |
-| `400 Bad Request` | Missing file, unsupported type, or file over 5MB   |
+| Status            | When                                             |
+| ----------------- | ------------------------------------------------ |
+| `400 Bad Request` | Missing file, unsupported type, or file over 5MB |
 
 ---
 
@@ -2947,10 +3127,10 @@ instead (`count`/`next`/`previous` populated, `data` holding one page).
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Response (`data[]`)
 
@@ -3011,13 +3191,13 @@ Create a new song. The new `id` is assigned automatically (continues the sequenc
 
 #### Request
 
-| Field      | Type    | Required | Description                     |
-| ---------- | ------- | -------- | ------------------------------- |
-| `title`    | string  | Yes      | Song title                                                          |
-| `artist`   | string  | No       | Artist name                                                         |
+| Field      | Type    | Required | Description                                                                                                                               |
+| ---------- | ------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `title`    | string  | Yes      | Song title                                                                                                                                |
+| `artist`   | string  | No       | Artist name                                                                                                                               |
 | `duration` | integer | No       | Length in seconds (client-sent); `Song.duration` defaults to `0` — omitting the field silently stores `0`, it isn't computed from `asset` |
-| `thumb`    | string  | Yes      | URL from `POST /api/upload-file/`                                   |
-| `asset`    | file    | Yes      | `.opus` audio file                                                  |
+| `thumb`    | string  | Yes      | URL from `POST /api/upload-file/`                                                                                                         |
+| `asset`    | file    | Yes      | `.opus` audio file                                                                                                                        |
 
 #### Example JSON Response
 
@@ -3035,10 +3215,10 @@ Create a new song. The new `id` is assigned automatically (continues the sequenc
 
 **Error Responses:**
 
-| Status            | When                                                                        |
-| ----------------- | ---------------------------------------------------------------------------- |
+| Status            | When                                                                                    |
+| ----------------- | --------------------------------------------------------------------------------------- |
 | `400 Bad Request` | Missing required field, `thumb` isn't a valid uploaded-file URL, or `asset` not `.opus` |
-| `403 Forbidden`   | Caller is not an admin                                                     |
+| `403 Forbidden`   | Caller is not an admin                                                                  |
 
 ---
 
@@ -3082,22 +3262,22 @@ instead (`count`/`next`/`previous` populated, `data` holding one page).
 
 **Query parameters:**
 
-| Param       | Type    | Required | Description                                            |
-| ----------- | ------- | -------- | ------------------------------------------------------- |
-| `page`      | integer | No       | Page number (only used when `page_size` is set)         |
-| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all   |
+| Param       | Type    | Required | Description                                           |
+| ----------- | ------- | -------- | ----------------------------------------------------- |
+| `page`      | integer | No       | Page number (only used when `page_size` is set)       |
+| `page_size` | integer | No       | Records per page, max `100`; `0`/omitted = return all |
 
 #### Response (`data[]`)
 
-| Field       | Type             | Description                                                    |
-| ----------- | ---------------- | -------------------------------------------------------------- |
-| `id`        | integer          | Playlist id (`1..3` bundled, `4..9` remote, `10+` admin-added) |
-| `title`     | string           | Playlist title                                                 |
+| Field       | Type             | Description                                                                                                                                          |
+| ----------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`        | integer          | Playlist id (`1..3` bundled, `4..9` remote, `10+` admin-added)                                                                                       |
+| `title`     | string           | Playlist title                                                                                                                                       |
 | `icon`      | string \| null   | `assets/...png` path (bundled) or absolute URL (remote); `null` if a bundled playlist has no icon (same fallback pattern as `Song.thumb`, see above) |
-| `cover`     | string \| null   | `assets/...png` path (bundled) or absolute URL (remote); `null` if a bundled playlist has no cover |
-| `color`     | string           | Hex color without `#` (e.g. `520102`)                          |
-| `song_ids`  | array of integer | Ordered song ids in the playlist                               |
-| `is_remote` | boolean          | `false` = bundled, `true` = streamed                           |
+| `cover`     | string \| null   | `assets/...png` path (bundled) or absolute URL (remote); `null` if a bundled playlist has no cover                                                   |
+| `color`     | string           | Hex color without `#` (e.g. `520102`)                                                                                                                |
+| `song_ids`  | array of integer | Ordered song ids in the playlist                                                                                                                     |
+| `is_remote` | boolean          | `false` = bundled, `true` = streamed                                                                                                                 |
 
 #### Example JSON Response
 
@@ -3162,10 +3342,10 @@ For `multipart/form-data`, send `song_ids` as repeated fields (`song_ids=1`, `so
 
 **Error Responses:**
 
-| Status            | When                                                                               |
-| ----------------- | ---------------------------------------------------------------------------------- |
+| Status            | When                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------- |
 | `400 Bad Request` | Missing field, `icon`/`cover` not a valid uploaded-file URL, or `song_ids` referencing an unknown/deleted song |
-| `403 Forbidden`   | Caller is not an admin                                                             |
+| `403 Forbidden`   | Caller is not an admin                                                                                         |
 
 ---
 
@@ -3199,3 +3379,19 @@ Soft-delete a playlist (hidden from lists; id is not reused). **Permission:** `I
 | -------------- | ------------------------- |
 | `GET /schema/` | OpenAPI 3.0 schema (JSON) |
 | `GET /docs/`   | Swagger UI                |
+
+---
+
+## 14. Known Issues & Implementation Notes
+
+Flagged during this documentation pass — useful context before relying on or changing these areas:
+
+- **`POST /api/payments/` currently errors on success** — see the bug note under [§8](#8-member-payments-phase-3). `MemberPaymentResponseSerializer.amount` has no `source="amount_paid"`, so building the response raises `AttributeError` (`HTTP 500`) even though the `Membership` row was already created and the member's tracking fields already updated. A client retrying after a 500 here risks creating a duplicate/overlapping membership (which the overlap check in §6 would then reject with a 400) rather than the payment simply not having happened.
+- **The `notifications` app has no API surface at all.** `notifications/` contains only `services.py`/`templates.py` (SMS/WhatsApp stub helpers) — it isn't in `INSTALLED_APPS`, has no `urls.py`/`views.py`/`models.py`, and nothing else in the codebase calls into it. There is no backend endpoint backing any client-side "notifications" feature; if one is needed, it doesn't exist yet.
+- **`POST /api/backup/upload/` and `GET /api/backup/download/` (LWW sync for `attendance.Attendance`) still appear to have no active consumer** beyond `reports`' `workout-backups-count` metric, which only counts distinct `WorkoutSession` users and doesn't read/write through the backup app itself. The workout and body-measurement sync endpoints (`/api/backup/workouts/*`, `/api/backup/body-measurements/*`, §11) are now consumed by the Flutter app's Dashboard "Backup to Server" / "Restore from Server" options.
+- **`GET /api/my-ip/` bypasses the standard response envelope.** Every other endpoint in this document is wrapped by `core/renderers.py::ResponseRenderer` (`{"data", "message", "status", "time"}`, or the flattened paginated shape). `/api/my-ip/` is explicitly decorated with DRF's plain `JSONRenderer` instead, so it returns its object (`ip`, `location`, `browser`, `os`, `device`, `is_bot`) unwrapped at the top level — this matches the doc's existing example (which only ever showed the payload), but the _reason_ is a deliberate renderer override on this one view, not the general convention.
+- **`CORS_ALLOW_ALL_ORIGINS = True`** is set in `fit_&fuel/settings.py` — every origin is currently allowed to call this API from a browser context. Worth knowing if this is ever exposed beyond the Flutter app's own traffic.
+- **Trainer-role visibility into `/api/reports/*` is narrower than a casual read of §10 might suggest.** Of the eight report endpoints, a `trainer` can only call `GET /api/reports/inactive-members/` (`IsGymOwner | IsTrainer`) — every other report requires `IsGymOwner` or `IsAdmin` and excludes `trainer` outright. This is a permission restriction, not a missing feature; if a trainer-facing dashboard needs workload/expiry/revenue/storage/traffic/backup-count figures, new endpoints or a permission change would be required, not just a client-side fix.
+- **`core/permissions.py::HavePermissions`** (a `DjangoModelPermissions` subclass) is defined but has zero references anywhere in the codebase — dead code.
+- **`core/exceptions.py::ConflictException`** (409) is used by the account-creation duplicate-phone checks (§3) but isn't listed in this document's top-level conventions — it's the source of every `409` response described throughout.
+- **`music/models.py`'s `MusicBaseModel` docstring says id ranges `"1..138 / 1..7"`** — this is a stale code comment; the actual seeded id ranges (confirmed from `music/seed_data/*.json`) are songs `1..165` and playlists `1..9`, which is what §13 documents. The mismatch is in the Python docstring, not this document.

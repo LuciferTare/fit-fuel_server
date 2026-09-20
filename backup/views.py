@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from attendance.models import Attendance
 from attendance.serializers import AttendanceSerializer
-from backup.models import ExerciseSet, SessionExercise, SessionRestBreak, WorkoutSession
+from backup.models import BodyMeasurement, ExerciseSet, SessionExercise, SessionRestBreak, WorkoutSession
 from core.pagination import OptionalPagination
 from core.permissions import IsAdmin, IsAuthenticatedUser, IsGymOwner, IsTrainer
 from core.views import BaseAPIView
@@ -255,3 +255,154 @@ class WorkoutSyncUploadView(BaseAPIView):
 
         synced_sessions = WorkoutSession.objects.filter(user=request.user).count()
         return Response({"synced_sessions": synced_sessions}, status=status.HTTP_200_OK)
+
+
+class WorkoutSyncDownloadView(BaseAPIView):
+    """GET /api/backup/workouts/download/ — return the authenticated user's
+    entire server-side workout history, nested in the same shape
+    `WorkoutSyncUploadView` accepts.
+    """
+
+    permission_classes = [IsAuthenticatedUser]
+
+    @extend_schema(tags=["Backup"])
+    def get(self, request):
+        sessions = (
+            WorkoutSession.objects.filter(user=request.user)
+            .prefetch_related("exercises__sets", "rest_breaks")
+            .order_by("session_date")
+        )
+
+        sessions_payload = []
+        for session in sessions:
+            sessions_payload.append(
+                {
+                    "session_date": session.session_date.isoformat(),
+                    "duration_minutes": session.duration_minutes,
+                    "notes": session.notes,
+                    "calories_burned": session.calories_burned,
+                    "is_rest_day": session.is_rest_day,
+                    "exercises": [
+                        {
+                            "exercise_name": exercise.exercise_name,
+                            "body_part": exercise.body_part,
+                            "muscle": exercise.muscle,
+                            "is_unilateral": exercise.is_unilateral,
+                            "set_type": exercise.set_type,
+                            "superset_group": exercise.superset_group,
+                            "sets": [
+                                {
+                                    "set_number": s.set_number,
+                                    "reps": s.reps,
+                                    "weight_kg": s.weight_kg,
+                                    "duration_seconds": s.duration_seconds,
+                                    "speed_kmh": s.speed_kmh,
+                                }
+                                for s in exercise.sets.all()
+                            ],
+                        }
+                        for exercise in session.exercises.all()
+                    ],
+                    "rest_breaks": [
+                        {
+                            "duration_minutes": rb.duration_minutes,
+                            "sort_index": rb.sort_index,
+                        }
+                        for rb in session.rest_breaks.all()
+                    ],
+                }
+            )
+
+        return Response({"sessions": sessions_payload}, status=status.HTTP_200_OK)
+
+
+class BodyMeasurementSyncUploadView(BaseAPIView):
+    """POST /api/backup/body-measurements/upload/ — replace the authenticated
+    user's entire server-side body-measurement history with what's in the
+    request body.
+
+    Whole-history replace, same rationale as WorkoutSyncUploadView.
+
+    Payload:
+        {
+            "measurements": [
+                {
+                    "age": 28, "gender": "male", "is_correction": false,
+                    "weight_kg": 72.5, "height_cm": 178.0, "chest_cm": 100.0,
+                    "waist_cm": 82.0, "biceps_cm": 35.0, "thighs_cm": 55.0,
+                    "neck_cm": 38.0, "hip_cm": 95.0, "body_fat_percent": 15.5,
+                    "recorded_at": "2026-01-15T08:30:00Z"
+                }
+            ]
+        }
+    """
+
+    permission_classes = [IsAuthenticatedUser]
+
+    @extend_schema(tags=["Backup"])
+    def post(self, request):
+        measurements_data = request.data.get("measurements", [])
+        if not isinstance(measurements_data, list):
+            return Response({"detail": "measurements must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            with transaction.atomic():
+                BodyMeasurement.objects.filter(user=request.user).delete()
+                for m in measurements_data:
+                    BodyMeasurement.objects.create(
+                        user=request.user,
+                        age=m.get("age"),
+                        gender=m.get("gender"),
+                        is_correction=bool(m.get("is_correction", False)),
+                        weight_kg=m.get("weight_kg"),
+                        height_cm=m.get("height_cm"),
+                        chest_cm=m.get("chest_cm"),
+                        waist_cm=m.get("waist_cm"),
+                        biceps_cm=m.get("biceps_cm"),
+                        thighs_cm=m.get("thighs_cm"),
+                        neck_cm=m.get("neck_cm"),
+                        hip_cm=m.get("hip_cm"),
+                        body_fat_percent=m.get("body_fat_percent"),
+                        recorded_at=m.get("recorded_at"),
+                        created_by=request.user,
+                        updated_by=request.user,
+                    )
+        except Exception as exc:
+            logger.exception("Body measurement sync upload error")
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        synced_measurements = BodyMeasurement.objects.filter(user=request.user).count()
+        return Response({"synced_measurements": synced_measurements}, status=status.HTTP_200_OK)
+
+
+class BodyMeasurementSyncDownloadView(BaseAPIView):
+    """GET /api/backup/body-measurements/download/ — return the authenticated
+    user's entire server-side body-measurement history.
+    """
+
+    permission_classes = [IsAuthenticatedUser]
+
+    @extend_schema(tags=["Backup"])
+    def get(self, request):
+        measurements = BodyMeasurement.objects.filter(user=request.user).order_by("-recorded_at")
+
+        measurements_payload = [
+            {
+                "age": m.age,
+                "gender": m.gender,
+                "is_correction": m.is_correction,
+                "weight_kg": m.weight_kg,
+                "height_cm": m.height_cm,
+                "chest_cm": m.chest_cm,
+                "waist_cm": m.waist_cm,
+                "biceps_cm": m.biceps_cm,
+                "thighs_cm": m.thighs_cm,
+                "neck_cm": m.neck_cm,
+                "hip_cm": m.hip_cm,
+                "body_fat_percent": m.body_fat_percent,
+                "recorded_at": m.recorded_at.isoformat(),
+            }
+            for m in measurements
+        ]
+
+        return Response({"measurements": measurements_payload}, status=status.HTTP_200_OK)

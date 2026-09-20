@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from backup.models import ExerciseSet, SessionExercise, SessionRestBreak, WorkoutSession
+from backup.models import BodyMeasurement, ExerciseSet, SessionExercise, SessionRestBreak, WorkoutSession
 
 
 @admin.register(WorkoutSession)
@@ -28,3 +28,10 @@ class ExerciseSetAdmin(admin.ModelAdmin):
 class SessionRestBreakAdmin(admin.ModelAdmin):
     list_display = ["session", "duration_minutes", "sort_index"]
     raw_id_fields = ["session"]
+
+
+@admin.register(BodyMeasurement)
+class BodyMeasurementAdmin(admin.ModelAdmin):
+    list_display = ["user", "recorded_at", "weight_kg", "body_fat_percent"]
+    search_fields = ["user__first_name", "user__last_name", "user__phone_number"]
+    raw_id_fields = ["user"]
