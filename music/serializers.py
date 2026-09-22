@@ -4,11 +4,11 @@ from core.serializers import UploadedFileURLField
 from music.models import Playlist, PlaylistSong, Song
 
 
-def _validate_opus(value):
-    name = getattr(value, "name", "") or ""
+def _validate_opus(val):
+    name = getattr(val, "name", "") or ""
     if not name.lower().endswith(".opus"):
         raise serializers.ValidationError("Audio must be a .opus file.")
-    return value
+    return val
 
 
 class MediaRefMixin:

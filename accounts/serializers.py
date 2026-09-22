@@ -34,22 +34,22 @@ def _run_model_validation(instance):
         )
 
 
-def _validate_password_strength(value):
+def _validate_password_strength(val):
     """Enforce strong-password rules used in serializer fields."""
     errors = []
-    if len(value) < 8:
+    if len(val) < 8:
         errors.append("Password must be at least 8 characters long.")
-    if not re.search(r"[A-Z]", value):
+    if not re.search(r"[A-Z]", val):
         errors.append("Password must contain at least one uppercase letter.")
-    if not re.search(r"[a-z]", value):
+    if not re.search(r"[a-z]", val):
         errors.append("Password must contain at least one lowercase letter.")
-    if not re.search(r"\d", value):
+    if not re.search(r"\d", val):
         errors.append("Password must contain at least one digit.")
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', value):
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', val):
         errors.append("Password must contain at least one special character.")
     if errors:
         raise serializers.ValidationError(errors)
-    return value
+    return val
 
 
 # ── Auth serializers ──────────────────────────────────────────────────────────
@@ -103,14 +103,14 @@ class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True)
 
-    def validate_old_password(self, value):
+    def validate_old_password(self, val):
         user = self.context["request"].user
-        if not user.check_password(value):
+        if not user.check_password(val):
             raise serializers.ValidationError("Old password is incorrect.")
-        return value
+        return val
 
-    def validate_new_password(self, value):
-        return _validate_password_strength(value)
+    def validate_new_password(self, val):
+        return _validate_password_strength(val)
 
     def validate(self, attrs):
         if attrs["old_password"] == attrs["new_password"]:
@@ -253,13 +253,13 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["uuid", "status", "created_at"]
 
-    def validate_phone_number(self, value):
-        if CustomUser.objects.filter(phone_number=value).exists():
+    def validate_phone_number(self, val):
+        if CustomUser.objects.filter(phone_number=val).exists():
             raise serializers.ValidationError("This phone number is already registered.")
-        return value
+        return val
 
-    def validate_password(self, value):
-        return _validate_password_strength(value)
+    def validate_password(self, val):
+        return _validate_password_strength(val)
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -374,13 +374,13 @@ class TrainerCreateSerializer(serializers.ModelSerializer):
             "experience_level",
         ]
 
-    def validate_phone_number(self, value):
-        if CustomUser.objects.filter(phone_number=value).exists():
+    def validate_phone_number(self, val):
+        if CustomUser.objects.filter(phone_number=val).exists():
             raise serializers.ValidationError("This phone number is already registered.")
-        return value
+        return val
 
-    def validate_password(self, value):
-        return _validate_password_strength(value)
+    def validate_password(self, val):
+        return _validate_password_strength(val)
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -416,13 +416,13 @@ class TrainerDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["uuid", "phone_number", "user_type", "gym_id", "created_at"]
 
-    def validate_password(self, value):
-        return _validate_password_strength(value)
+    def validate_password(self, val):
+        return _validate_password_strength(val)
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
         if password:
             instance.set_password(password)
         _run_model_validation(instance)
@@ -454,13 +454,13 @@ class MemberCreateSerializer(serializers.ModelSerializer):
             "trainer_uuid",
         ]
 
-    def validate_phone_number(self, value):
-        if CustomUser.objects.filter(phone_number=value).exists():
+    def validate_phone_number(self, val):
+        if CustomUser.objects.filter(phone_number=val).exists():
             raise serializers.ValidationError("This phone number is already registered.")
-        return value
+        return val
 
-    def validate_password(self, value):
-        return _validate_password_strength(value)
+    def validate_password(self, val):
+        return _validate_password_strength(val)
 
     def validate(self, attrs):
         trainer_uuid = attrs.pop("trainer_uuid", None)
@@ -515,27 +515,27 @@ class MemberDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["uuid", "phone_number", "user_type", "gym_id", "created_at"]
 
-    def validate_trainer_id(self, value):
-        if value is None:
-            return value
+    def validate_trainer_id(self, val):
+        if val is None:
+            return val
         request = self.context.get("request")
-        filters = {"uuid": value, "user_type": UserType.TRAINER}
+        filters = {"uuid": val, "user_type": UserType.TRAINER}
         if request and request.user.user_type == UserType.GYM_OWNER:
             filters["gym"] = request.user
         try:
             CustomUser.active_objects.get(**filters)
         except CustomUser.DoesNotExist:
             raise serializers.ValidationError("Trainer not found in this gym.")
-        return value
+        return val
 
-    def validate_password(self, value):
-        return _validate_password_strength(value)
+    def validate_password(self, val):
+        return _validate_password_strength(val)
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
         trainer_id = validated_data.pop("trainer_id", ...)
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
         if trainer_id is not ...:
             instance.trainer_id = trainer_id
         if password:
