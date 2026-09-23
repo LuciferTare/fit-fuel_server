@@ -21,7 +21,8 @@
 11. [Backup / Sync](#11-backup--sync)
 12. [Utility](#12-utility)
 13. [Music (Playlists & Songs)](#13-music-playlists--songs)
-14. [Known Issues & Implementation Notes](#14-known-issues--implementation-notes)
+14. [Notification Templates](#14-notification-templates)
+15. [Known Issues & Implementation Notes](#15-known-issues--implementation-notes)
 
 ---
 
@@ -3382,12 +3383,175 @@ Soft-delete a playlist (hidden from lists; id is not reused). **Permission:** `I
 
 ---
 
-## 14. Known Issues & Implementation Notes
+## 14. Notification Templates
+
+Reusable WhatsApp/SMS message templates that admins and gym owners can create
+and pick from when messaging recipients — the Flutter app builds the actual
+`wa.me`/`sms:` deep-link client-side using the template's `message` text; the
+backend only stores and serves the templates themselves.
+
+Every template belongs to a **category**, always one of exactly four fixed
+values (`NotificationCategory` choices) — there is no free-text category:
+
+| Value       | Label     |
+| ----------- | --------- |
+| `general`   | General   |
+| `promotion` | Promotion |
+| `alert`     | Alert     |
+| `reminder`  | Reminder  |
+
+**Visibility / gym scoping:**
+
+- A template created by an **admin** has `gym = null` and is a *global*
+  template — visible to every gym owner as well as to admin.
+- A template created by a **gym_owner** is stamped with that user's own gym
+  (`request.user.gym_details`) and stays private to that gym.
+- `GET` (list/retrieve) for a **gym_owner** returns their own gym's templates
+  plus every global (admin-authored) template. `GET` for an **admin** returns
+  every template, across every gym.
+- The `gym` field is never client-settable — it's always derived server-side
+  from the caller's role, never accepted from the request body.
+
+### GET `/api/notifications/templates/`
+
+List notification templates visible to the caller.
+
+**Permission:** `IsAdminOrGymOwner`
+
+**Query parameters:**
+
+| Param       | Type    | Required | Description                                     |
+| ----------- | ------- | -------- | ------------------------------------------------ |
+| `category`  | string  | No       | Filter to one of `general`/`promotion`/`alert`/`reminder` |
+| `search`    | string  | No       | Matches against `title` or `message`             |
+| `ordering`  | string  | No       | `created_at`, `title`, or `-` prefixed for descending (default `-created_at`) |
+| `page`      | integer | No       | Page number                                       |
+| `page_size` | integer | No       | Records per page, max `100` (default `20`)        |
+
+#### Response (`data[]`)
+
+| Field        | Type            | Description                                              |
+| ------------ | --------------- | --------------------------------------------------------- |
+| `uuid`       | string          | Template id                                               |
+| `gym`        | string \| null  | Owning gym's uuid; `null` for a global admin template     |
+| `gym_name`   | string \| null  | Owning gym's name; `null` for a global admin template     |
+| `title`      | string          | Short template name                                       |
+| `message`    | string          | The message body, ready to send as-is                     |
+| `category`   | string          | One of `general`/`promotion`/`alert`/`reminder`           |
+| `created_at` | datetime        |                                                             |
+| `updated_at` | datetime        |                                                             |
+
+#### Example JSON Response
+
+```json
+{
+  "count": 2,
+  "next": null,
+  "previous": null,
+  "data": [
+    {
+      "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
+      "gym": null,
+      "gym_name": null,
+      "title": "Membership Renewal Reminder",
+      "message": "Hi! Your membership is expiring soon. Renew now to keep enjoying uninterrupted access.",
+      "category": "reminder",
+      "created_at": "2026-09-20T10:00:00Z",
+      "updated_at": "2026-09-20T10:00:00Z"
+    },
+    {
+      "uuid": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+      "gym": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+      "gym_name": "Iron Paradise",
+      "title": "Festive Discount",
+      "message": "Get 20% off on your next membership renewal this week only.",
+      "category": "promotion",
+      "created_at": "2026-09-21T09:30:00Z",
+      "updated_at": "2026-09-21T09:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+### POST `/api/notifications/templates/`
+
+Create a new template. `gym` is derived automatically from the caller (see
+above) and must not be sent in the request body.
+
+**Permission:** `IsAdminOrGymOwner`
+
+#### Request
+
+| Field      | Type   | Required | Description                                         |
+| ---------- | ------ | -------- | ---------------------------------------------------- |
+| `title`    | string | Yes      | Short template name                                  |
+| `message`  | string | Yes      | The message body                                      |
+| `category` | string | Yes      | One of `general`/`promotion`/`alert`/`reminder`       |
+
+```json
+{
+  "title": "Festive Discount",
+  "message": "Get 20% off on your next membership renewal this week only.",
+  "category": "promotion"
+}
+```
+
+#### Example JSON Response
+
+```json
+{
+  "uuid": "1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6d",
+  "gym": "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
+  "gym_name": "Iron Paradise",
+  "title": "Festive Discount",
+  "message": "Get 20% off on your next membership renewal this week only.",
+  "category": "promotion",
+  "created_at": "2026-09-21T09:30:00Z",
+  "updated_at": "2026-09-21T09:30:00Z"
+}
+```
+
+**Error Responses:**
+
+| Status            | When                                                         |
+| ----------------- | -------------------------------------------------------------|
+| `400 Bad Request` | Missing `title`/`message`, or `category` not one of the four fixed values |
+| `403 Forbidden`   | Caller is neither admin nor gym_owner                        |
+
+---
+
+### GET `/api/notifications/templates/{uuid}/`
+
+Retrieve a single template (subject to the same visibility rules as the list). **Permission:** `IsAdminOrGymOwner`.
+
+---
+
+### PUT `/api/notifications/templates/{uuid}/`
+
+Full replace of a template's `title`/`message`/`category`. **Permission:** `IsAdminOrGymOwner`. Same fields as `POST`. Returns the updated template object.
+
+---
+
+### POST `/api/notifications/templates/{uuid}/update/`
+
+Partial update (POST-not-PATCH convention). **Permission:** `IsAdminOrGymOwner`. Any subset of `title`/`message`/`category`. Returns the updated template object.
+
+---
+
+### DELETE `/api/notifications/templates/{uuid}/`
+
+Soft-delete a template (hidden from lists). **Permission:** `IsAdminOrGymOwner`. Returns `HTTP 204 No Content`.
+
+---
+
+## 15. Known Issues & Implementation Notes
 
 Flagged during this documentation pass — useful context before relying on or changing these areas:
 
 - **`POST /api/payments/` currently errors on success** — see the bug note under [§8](#8-member-payments-phase-3). `MemberPaymentResponseSerializer.amount` has no `source="amount_paid"`, so building the response raises `AttributeError` (`HTTP 500`) even though the `Membership` row was already created and the member's tracking fields already updated. A client retrying after a 500 here risks creating a duplicate/overlapping membership (which the overlap check in §6 would then reject with a 400) rather than the payment simply not having happened.
-- **The `notifications` app has no API surface at all.** `notifications/` contains only `services.py`/`templates.py` (SMS/WhatsApp stub helpers) — it isn't in `INSTALLED_APPS`, has no `urls.py`/`views.py`/`models.py`, and nothing else in the codebase calls into it. There is no backend endpoint backing any client-side "notifications" feature; if one is needed, it doesn't exist yet.
+- **`notifications/services.py`/`templates.py` (SMS/WhatsApp render helpers) are still standalone stubs, not wired to the API.** They predate — and are unrelated to — the `NotificationTemplate` CRUD API added in [§14](#14-notification-templates); nothing in `notifications/views.py` calls into them. The Flutter app builds its own `wa.me`/`sms:` deep-links client-side instead of asking the backend to render one.
 - **`POST /api/backup/upload/` and `GET /api/backup/download/` (LWW sync for `attendance.Attendance`) still appear to have no active consumer** beyond `reports`' `workout-backups-count` metric, which only counts distinct `WorkoutSession` users and doesn't read/write through the backup app itself. The workout and body-measurement sync endpoints (`/api/backup/workouts/*`, `/api/backup/body-measurements/*`, §11) are now consumed by the Flutter app's Dashboard "Backup to Server" / "Restore from Server" options.
 - **`GET /api/my-ip/` bypasses the standard response envelope.** Every other endpoint in this document is wrapped by `core/renderers.py::ResponseRenderer` (`{"data", "message", "status", "time"}`, or the flattened paginated shape). `/api/my-ip/` is explicitly decorated with DRF's plain `JSONRenderer` instead, so it returns its object (`ip`, `location`, `browser`, `os`, `device`, `is_bot`) unwrapped at the top level — this matches the doc's existing example (which only ever showed the payload), but the _reason_ is a deliberate renderer override on this one view, not the general convention.
 - **`CORS_ALLOW_ALL_ORIGINS = True`** is set in `fit_&fuel/settings.py` — every origin is currently allowed to call this API from a browser context. Worth knowing if this is ever exposed beyond the Flutter app's own traffic.

@@ -34,6 +34,7 @@ urlpatterns = [
         path("backup/", include("backup.urls")),
         path("payments/", include("accounts.urls_member_payments")),
         path("music/", include("music.urls")),
+        path("notifications/", include("notifications.urls")),
     ])),
 
     # API docs
