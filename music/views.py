@@ -1,4 +1,3 @@
-from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework.response import Response
 
@@ -68,9 +67,7 @@ class _MusicViewSet(BaseModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        instance.is_deleted = True
-        instance.deleted_at = timezone.now()
-        instance.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+        instance.soft_delete(deleted_by=request.user)
         return Response(status=204)
 
 

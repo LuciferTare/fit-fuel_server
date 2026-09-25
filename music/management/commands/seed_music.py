@@ -5,7 +5,7 @@ from pathlib import Path
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
-from django.db import transaction
+from django.db import connection, transaction
 
 from music.models import Playlist, PlaylistSong, Song
 
@@ -30,7 +30,7 @@ def safe_name(name):
 class Command(BaseCommand):
     help = (
         "Seed the bundled songs.json / playlists.json into the DB so backend ids "
-        "continue from the bundled sequence (166 / 10). Playlists named by "
+        "continue from the bundled sequence (168 / 10). Playlists named by "
         f"--remote-playlists (default {DEFAULT_REMOTE_PLAYLISTS}) are seeded as "
         "remote: their media is copied into MEDIA_ROOT and served as absolute URLs. "
         "Every other playlist stays bundled, keeping its 'assets/...' paths. "
@@ -207,6 +207,20 @@ class Command(BaseCommand):
 
         next_song = (Song.objects.order_by("-id").values_list("id", flat=True).first() or 0) + 1
         next_playlist = (Playlist.objects.order_by("-id").values_list("id", flat=True).first() or 0) + 1
+
+        # Make "next id continues the bundled sequence" unconditional rather than an
+        # implicit side effect of how each row got inserted, so a song/playlist
+        # created afterwards (e.g. from the app) can never collide with a seeded id.
+        # MySQL ignores an AUTO_INCREMENT value that isn't above the current counter,
+        # so this is always safe to re-run.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"ALTER TABLE {Song._meta.db_table} AUTO_INCREMENT = {next_song}"
+            )
+            cursor.execute(
+                f"ALTER TABLE {Playlist._meta.db_table} AUTO_INCREMENT = {next_playlist}"
+            )
+
         self.stdout.write(
             self.style.SUCCESS(
                 f"Next song id: {next_song} | Next playlist id: {next_playlist}"

@@ -1,5 +1,10 @@
+import datetime
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db import transaction
 from django.db.models import Count, Q, Value
 from django.db.models.functions import Concat
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework import filters, status
@@ -7,7 +12,16 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
-from accounts.models import CustomUser, Gym, Membership, MembershipStatus, Payment, UserStatus, UserType
+from accounts.models import (
+    CustomUser,
+    Gym,
+    Membership,
+    MembershipStatus,
+    Payment,
+    PaymentStatus,
+    UserStatus,
+    UserType,
+)
 from accounts.serializers import (
     AssignTrainerSerializer,
     GymOwnerCreateSerializer,
@@ -25,6 +39,7 @@ from accounts.serializers import (
     TrainerDetailSerializer,
     TrainerSummarySerializer,
 )
+from accounts.validators import StrongPasswordValidator
 from core.exceptions import ConflictException
 from core.pagination import CustomPagination, OptionalPagination
 from core.permissions import (
@@ -36,6 +51,27 @@ from core.permissions import (
     IsTrainer,
 )
 from core.views import BaseAPIView, BaseModelViewSet, BaseReadOnlyModelViewSet
+
+
+def _validate_friendly_signup_fields(data):
+    """Gender-required and password-strength failures are the two most likely
+    to reach here from something other than the app's own create dialogs
+    (both are enforced client-side too — a stale build or a direct API call
+    is what would actually trigger these). Raised here, before the serializer
+    ever runs, as a plain-string `ValidationError` rather than a dict — DRF
+    then wraps `exc.detail` as `{"detail": "<message>"}`, which the renderer
+    turns into a plain-string `message` (the same path `ConflictException`
+    already uses), instead of the field-error dict shape serializer
+    validation normally produces.
+    """
+    if not data.get("gender"):
+        raise DRFValidationError("Please select a gender.")
+    password = data.get("password")
+    if password:
+        try:
+            StrongPasswordValidator().validate(password)
+        except DjangoValidationError as exc:
+            raise DRFValidationError(" ".join(exc.messages))
 
 
 # ── Gym Master Management ─────────────────────────────────────────────────────
@@ -89,7 +125,7 @@ class GymViewSet(BaseModelViewSet):
         gym.deleted_at = None
         gym.updated_by = request.user
         gym.save(update_fields=["is_deleted", "deleted_at", "updated_by", "updated_at"])
-        return Response(GymSerializer(gym).data)
+        return Response(self.get_serializer(gym).data)
 
 
 # ── Admin: Gym Owner Management ───────────────────────────────────────────────
@@ -137,6 +173,7 @@ class GymOwnerViewSet(BaseModelViewSet):
         phone = request.data.get("phone_number")
         if phone and CustomUser.objects.filter(phone_number=phone).exists():
             raise ConflictException("This phone number is already registered.")
+        _validate_friendly_signup_fields(request.data)
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -160,7 +197,7 @@ class GymOwnerViewSet(BaseModelViewSet):
         owner.status = UserStatus.DISABLED
         owner.updated_by = request.user
         owner.save(update_fields=["status", "updated_by", "updated_at"])
-        return Response(GymOwnerDetailSerializer(owner).data)
+        return Response(self.get_serializer(owner).data)
 
     @extend_schema(summary="Enable Gym Owner")
     @action(detail=True, methods=["post"], url_path="enable")
@@ -169,7 +206,7 @@ class GymOwnerViewSet(BaseModelViewSet):
         owner.status = UserStatus.ACTIVE
         owner.updated_by = request.user
         owner.save(update_fields=["status", "updated_by", "updated_at"])
-        return Response(GymOwnerDetailSerializer(owner).data)
+        return Response(self.get_serializer(owner).data)
 
 
 # ── Gym Owner: Trainer Management ─────────────────────────────────────────────
@@ -218,6 +255,7 @@ class TrainerViewSet(BaseModelViewSet):
                 {"trainer_limit": f"Trainer limit of {gym_owner.trainer_limit} has been reached."}
             )
 
+        _validate_friendly_signup_fields(request.data)
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -242,7 +280,7 @@ class TrainerViewSet(BaseModelViewSet):
         trainer.status = UserStatus.DISABLED
         trainer.updated_by = request.user
         trainer.save(update_fields=["status", "updated_by", "updated_at"])
-        return Response(TrainerDetailSerializer(trainer).data)
+        return Response(self.get_serializer(trainer).data)
 
     @extend_schema(summary="Enable Trainer")
     @action(detail=True, methods=["post"], url_path="enable")
@@ -251,7 +289,7 @@ class TrainerViewSet(BaseModelViewSet):
         trainer.status = UserStatus.ACTIVE
         trainer.updated_by = request.user
         trainer.save(update_fields=["status", "updated_by", "updated_at"])
-        return Response(TrainerDetailSerializer(trainer).data)
+        return Response(self.get_serializer(trainer).data)
 
 
 # ── Gym Owner: Member Management ──────────────────────────────────────────────
@@ -289,6 +327,7 @@ class MemberViewSet(BaseModelViewSet):
         phone = request.data.get("phone_number")
         if phone and CustomUser.objects.filter(phone_number=phone).exists():
             raise ConflictException("This phone number is already registered.")
+        _validate_friendly_signup_fields(request.data)
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -297,6 +336,25 @@ class MemberViewSet(BaseModelViewSet):
             gym=self.request.user,
             created_by=self.request.user,
         )
+
+    def update(self, request, *args, **kwargs):
+        # get_queryset() already excludes soft-deleted members, so a deleted
+        # member's UUID would otherwise 404 with a generic "not found" — this
+        # gives the caller an unambiguous reason instead, but only for a
+        # member that actually belongs to their own gym (soft-deleted or not,
+        # a different gym's member still gets the generic 404 below).
+        member_uuid = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
+        if CustomUser.objects.filter(
+            uuid=member_uuid,
+            user_type=UserType.MEMBER,
+            gym=request.user,
+            is_deleted=True,
+        ).exists():
+            return Response(
+                {"detail": "This member has been deleted and can no longer be updated."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return super().update(request, *args, **kwargs)
 
     def perform_update(self, serializer):
         serializer.save(updated_by=self.request.user)
@@ -313,7 +371,7 @@ class MemberViewSet(BaseModelViewSet):
         member.status = UserStatus.DISABLED
         member.updated_by = request.user
         member.save(update_fields=["status", "updated_by", "updated_at"])
-        return Response(MemberDetailSerializer(member).data)
+        return Response(self.get_serializer(member).data)
 
     @extend_schema(summary="Enable Member")
     @action(detail=True, methods=["post"], url_path="enable")
@@ -322,7 +380,7 @@ class MemberViewSet(BaseModelViewSet):
         member.status = UserStatus.ACTIVE
         member.updated_by = request.user
         member.save(update_fields=["status", "updated_by", "updated_at"])
-        return Response(MemberDetailSerializer(member).data)
+        return Response(self.get_serializer(member).data)
 
     @extend_schema(summary="Assign Trainer to Member")
     @action(detail=True, methods=["post"], url_path="assign-trainer")
@@ -348,7 +406,7 @@ class MemberViewSet(BaseModelViewSet):
         member.trainer = trainer
         member.updated_by = request.user
         member.save(update_fields=["trainer", "updated_by", "updated_at"])
-        return Response(MemberDetailSerializer(member).data)
+        return Response(self.get_serializer(member).data)
 
 
 # ── Trainer: View Assigned Members ────────────────────────────────────────────
@@ -503,31 +561,49 @@ class MemberPaymentView(BaseAPIView):
         except CustomUser.DoesNotExist:
             return Response({"detail": "Member not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        mode_map = {"Cash": "cash", "Online": "online"}
-        membership = Membership.objects.create(
-            member=member,
-            start_date=data["start_date"],
-            end_date=data["end_date"],
-            amount_paid=data["amount"],
-            payment_mode=mode_map[data["mode"]],
-            plan=data.get("plan", ""),
-            status=MembershipStatus.ACTIVE,
-            created_by=request.user,
-            updated_by=request.user,
-        )
+        with transaction.atomic():
+            membership = Membership.objects.create(
+                member=member,
+                start_date=data["start_date"],
+                end_date=data["end_date"],
+                amount_paid=data["amount"],
+                payment_mode=data["mode"],
+                plan=data.get("plan", ""),
+                status=MembershipStatus.ACTIVE,
+                created_by=request.user,
+                updated_by=request.user,
+            )
 
-        member.membership_start = data["start_date"]
-        member.membership_end = data["end_date"]
-        member.membership_status = MembershipStatus.ACTIVE
-        member.membership_plan = data.get("plan", "")
-        member.updated_by = request.user
-        member.save(
-            update_fields=[
-                "membership_start", "membership_end",
-                "membership_status", "membership_plan",
-                "updated_by", "updated_at",
-            ]
-        )
+            Payment.objects.create(
+                paid_by=member,
+                membership=membership,
+                amount=data["amount"],
+                mode=data["mode"],
+                status=PaymentStatus.PAID,
+                paid_on=timezone.make_aware(
+                    datetime.datetime.combine(data["date"], datetime.time.min)
+                ),
+                created_by=request.user,
+                updated_by=request.user,
+            )
+
+            member.membership_start = data["start_date"]
+            member.membership_end = data["end_date"]
+            member.membership_status = MembershipStatus.ACTIVE
+            member.membership_plan = data.get("plan", "")
+            member.updated_by = request.user
+            member.save(
+                update_fields=[
+                    "membership_start", "membership_end",
+                    "membership_status", "membership_plan",
+                    "updated_by", "updated_at",
+                ]
+            )
+
+        # `Membership` has no column for the submitted `date` (it only has
+        # start_date/end_date); attach it as a transient attribute so the
+        # response echoes what was actually submitted instead of start_date.
+        membership.date = data["date"]
 
         return Response(
             MemberPaymentResponseSerializer(membership).data,

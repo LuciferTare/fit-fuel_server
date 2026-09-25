@@ -1,5 +1,10 @@
+import tempfile
+from pathlib import Path
+
+from django.conf import settings
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -114,6 +119,19 @@ class SongViewSetTests(TestCase):
         ids = [row["id"] for row in list_res.json()["data"]]
         self.assertNotIn(self.song.id, ids)
 
+    def test_deleting_song_removes_it_from_playlists(self):
+        playlist = Playlist.objects.create(title="Workout Mix", created_by=self.admin)
+        PlaylistSong.objects.create(playlist=playlist, song=self.song, position=0)
+
+        self.client.force_authenticate(user=self.admin)
+        res = self.client.delete(reverse("song-detail", args=[self.song.id]))
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+
+        self.assertFalse(PlaylistSong.objects.filter(song=self.song).exists())
+        res = self.client.get(reverse("playlist-detail", args=[playlist.id]))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertNotIn(self.song.id, res.json()["data"]["song_ids"])
+
     def test_any_admin_can_update_or_delete_song_created_by_another_admin(self):
         self.client.force_authenticate(user=self.other_admin)
         res = self.client.post(
@@ -207,6 +225,24 @@ class PlaylistViewSetTests(TestCase):
         list_res = self.client.get(reverse("playlist-list"))
         ids = [row["id"] for row in list_res.json()["data"]]
         self.assertNotIn(self.playlist.id, ids)
+
+    def test_playlist_update_deletes_replaced_icon(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "old_icon.jpg").write_bytes(b"x")
+            (Path(tmp) / "new_icon.jpg").write_bytes(b"y")
+            with override_settings(MEDIA_ROOT=tmp):
+                self.playlist.icon_file = "old_icon.jpg"
+                self.playlist.save(update_fields=["icon_file"])
+
+                self.client.force_authenticate(user=self.admin)
+                res = self.client.post(
+                    reverse("playlist-update", args=[self.playlist.id]),
+                    {"icon": f"http://testserver{settings.MEDIA_URL}new_icon.jpg"},
+                    format="json",
+                )
+                self.assertEqual(res.status_code, status.HTTP_200_OK)
+                self.assertFalse(default_storage.exists("old_icon.jpg"))
+                self.assertTrue(default_storage.exists("new_icon.jpg"))
 
     def test_any_admin_can_update_or_delete_playlist_created_by_another_admin(self):
         self.client.force_authenticate(user=self.other_admin)

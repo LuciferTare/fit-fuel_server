@@ -5,48 +5,10 @@ from rest_framework.response import Response
 from accounts.models import UserType
 from attendance.models import Attendance
 from attendance.serializers import AttendanceSerializer, CheckInSerializer, CheckOutSerializer
+from attendance.services import duplicate_checkin_error, geofence_error, photo_required_error
 from core.pagination import OptionalPagination
 from core.permissions import IsGymOwner, IsMember, IsTrainer
-from core.utils import haversine_distance_m
 from core.views import BaseAPIView
-
-# Check-in/out must be within this many meters of the user's gym.
-ATTENDANCE_RADIUS_M = 50
-
-
-def _user_gym_location(user):
-    """(latitude, longitude) of the Gym `user`'s account belongs to, or
-    None if the user isn't linked to a gym or that gym has no location set."""
-    gym_owner = user.gym
-    if gym_owner is None or gym_owner.gym_details is None:
-        return None
-    gym = gym_owner.gym_details
-    if gym.latitude is None or gym.longitude is None:
-        return None
-    return gym.latitude, gym.longitude
-
-
-def _geofence_error(user, lat, lng):
-    """Response describing why `lat`/`lng` is rejected, or None if it's
-    within ATTENDANCE_RADIUS_M of the user's gym."""
-    location = _user_gym_location(user)
-    if location is None:
-        return Response(
-            {"detail": "Your gym has no registered location. Contact your gym owner."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    distance = haversine_distance_m(lat, lng, *location)
-    if distance > ATTENDANCE_RADIUS_M:
-        return Response(
-            {
-                "detail": (
-                    f"You are {distance:.0f}m away from your gym — check-in/out "
-                    f"must be within {ATTENDANCE_RADIUS_M}m of the gym location."
-                )
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    return None
 
 
 class CheckInView(BaseAPIView):
@@ -68,28 +30,17 @@ class CheckInView(BaseAPIView):
         data = serializer.validated_data
         is_trainer = request.user.user_type == UserType.TRAINER
 
-        if is_trainer and not data.get("photo"):
-            return Response(
-                {"detail": "A photo is required for check-in."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        photo_error = photo_required_error(request.user, data.get("photo"))
+        if photo_error:
+            return Response({"detail": photo_error}, status=status.HTTP_400_BAD_REQUEST)
 
-        if is_trainer:
-            already_checked_in = Attendance.active_objects.filter(
-                user=request.user, check_out__isnull=True
-            ).exists()
-            duplicate_message = "You're already checked in."
-        else:
-            already_checked_in = Attendance.active_objects.filter(
-                user=request.user, check_in__date=data["timestamp"].date()
-            ).exists()
-            duplicate_message = "You've already checked in today."
-        if already_checked_in:
-            return Response({"detail": duplicate_message}, status=status.HTTP_400_BAD_REQUEST)
+        dup_error = duplicate_checkin_error(request.user, data["timestamp"].date())
+        if dup_error:
+            return Response({"detail": dup_error}, status=status.HTTP_400_BAD_REQUEST)
 
-        geofence_error = _geofence_error(request.user, data["lat"], data["lng"])
-        if geofence_error:
-            return geofence_error
+        geo_error = geofence_error(request.user, data["lat"], data["lng"])
+        if geo_error:
+            return Response({"detail": geo_error}, status=status.HTTP_400_BAD_REQUEST)
 
         attendance = Attendance.objects.create(
             user=request.user,
@@ -100,7 +51,10 @@ class CheckInView(BaseAPIView):
             created_by=request.user,
             updated_by=request.user,
         )
-        return Response(AttendanceSerializer(attendance).data, status=status.HTTP_201_CREATED)
+        return Response(
+            AttendanceSerializer(attendance, context={"request": request}).data,
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class CheckOutView(BaseAPIView):
@@ -118,11 +72,9 @@ class CheckOutView(BaseAPIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         data = serializer.validated_data
 
-        if not data.get("photo"):
-            return Response(
-                {"detail": "A photo is required for trainer check-out."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        photo_error = photo_required_error(request.user, data.get("photo"))
+        if photo_error:
+            return Response({"detail": photo_error}, status=status.HTTP_400_BAD_REQUEST)
 
         attendance = (
             Attendance.active_objects.filter(user=request.user, check_out__isnull=True)
@@ -135,9 +87,9 @@ class CheckOutView(BaseAPIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        geofence_error = _geofence_error(request.user, data["lat"], data["lng"])
-        if geofence_error:
-            return geofence_error
+        geo_error = geofence_error(request.user, data["lat"], data["lng"])
+        if geo_error:
+            return Response({"detail": geo_error}, status=status.HTTP_400_BAD_REQUEST)
 
         attendance.check_out = data["timestamp"]
         attendance.check_out_lat = data["lat"]
@@ -150,7 +102,10 @@ class CheckOutView(BaseAPIView):
                 "updated_by", "updated_at",
             ]
         )
-        return Response(AttendanceSerializer(attendance).data, status=status.HTTP_200_OK)
+        return Response(
+            AttendanceSerializer(attendance, context={"request": request}).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class AttendanceListView(BaseAPIView):
@@ -182,5 +137,7 @@ class AttendanceListView(BaseAPIView):
 
         page = self.paginate_queryset(qs)
         if page is not None:
-            return self.get_paginated_response(AttendanceSerializer(page, many=True).data)
-        return Response(AttendanceSerializer(qs, many=True).data)
+            return self.get_paginated_response(
+                AttendanceSerializer(page, many=True, context={"request": request}).data
+            )
+        return Response(AttendanceSerializer(qs, many=True, context={"request": request}).data)

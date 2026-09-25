@@ -7,13 +7,16 @@ GET  /api/backup/download/ — client pulls server changes since a timestamp
 import logging
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils.dateparse import parse_datetime
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework import status
 from rest_framework.response import Response
 
+from accounts.models import CustomUser, UserType
 from attendance.models import Attendance
 from attendance.serializers import AttendanceSerializer
+from attendance.services import duplicate_checkin_error, geofence_error, photo_required_error
 from backup.models import BodyMeasurement, ExerciseSet, SessionExercise, SessionRestBreak, WorkoutSession
 from core.pagination import OptionalPagination
 from core.permissions import IsAdmin, IsAuthenticatedUser, IsGymOwner, IsTrainer
@@ -26,6 +29,68 @@ logger = logging.getLogger(__name__)
 _SYNCABLE = {
     "attendance.Attendance": Attendance,
 }
+
+
+def _attendance_scope_q(user):
+    """Which Attendance rows `user` may read/write through backup sync.
+    Mirrors AttendanceListView's own-gym rule for gym owners; trainers are
+    additionally scoped to their assigned members (plus their own rows,
+    since trainers have their own check-in/out history to back up too)."""
+    if user.user_type == UserType.ADMIN:
+        return Q()
+    if user.user_type == UserType.GYM_OWNER:
+        return Q(user__gym=user)
+    if user.user_type == UserType.TRAINER:
+        return Q(user=user) | Q(user__trainer=user)
+    return Q(pk__isnull=True)
+
+
+def _can_write_attendance_for(caller, target_user):
+    """Whether `caller` may create/update/delete an Attendance row belonging
+    to `target_user` via backup sync — same boundary as `_attendance_scope_q`,
+    just evaluated against one specific user instead of as a queryset filter."""
+    if target_user is None:
+        return False
+    if caller.user_type == UserType.ADMIN:
+        return True
+    if caller.user_type == UserType.GYM_OWNER:
+        return target_user.gym_id == caller.uuid
+    if caller.user_type == UserType.TRAINER:
+        return target_user.uuid == caller.uuid or target_user.trainer_id == caller.uuid
+    return False
+
+
+def _attendance_rule_error(target_user, data, is_create):
+    """Applies the same rules `attendance.views.CheckInView`/`CheckOutView`
+    enforce live (attendance.services) to a backup-sync create/update, based
+    on whichever of the check-in/check-out fields are present in `data`."""
+    if any(k in data for k in ("check_in", "check_in_lat", "check_in_lng", "check_in_photo")):
+        error = photo_required_error(target_user, data.get("check_in_photo"))
+        if error:
+            return error
+        if is_create and data.get("check_in"):
+            check_in_dt = parse_datetime(str(data["check_in"]))
+            if check_in_dt:
+                error = duplicate_checkin_error(target_user, check_in_dt.date())
+                if error:
+                    return error
+        lat, lng = data.get("check_in_lat"), data.get("check_in_lng")
+        if lat is not None and lng is not None:
+            error = geofence_error(target_user, lat, lng)
+            if error:
+                return error
+
+    if any(k in data for k in ("check_out", "check_out_lat", "check_out_lng", "check_out_photo")):
+        error = photo_required_error(target_user, data.get("check_out_photo"))
+        if error:
+            return error
+        lat, lng = data.get("check_out_lat"), data.get("check_out_lng")
+        if lat is not None and lng is not None:
+            error = geofence_error(target_user, lat, lng)
+            if error:
+                return error
+
+    return None
 
 
 class BackupUploadView(BaseAPIView):
@@ -66,31 +131,44 @@ class BackupUploadView(BaseAPIView):
             try:
                 if action in ("create", "update"):
                     obj_uuid = data.get("uuid")
-                    if obj_uuid:
-                        try:
-                            instance = Model.objects.get(uuid=obj_uuid)
-                            # LWW: skip if server record is newer
-                            client_ts_raw = data.get("updated_at")
-                            if client_ts_raw:
-                                client_ts = parse_datetime(str(client_ts_raw))
-                                if client_ts and instance.updated_at and client_ts <= instance.updated_at:
-                                    stats["skipped"] += 1
-                                    continue
-                            for field, value in data.items():
-                                if field not in ("uuid", "created_at", "updated_at", "created_by", "updated_by"):
-                                    setattr(instance, field, value)
-                            instance.updated_by = request.user
-                            instance.save()
-                            stats["updated"] += 1
-                        except Model.DoesNotExist:
-                            safe_data = {
-                                k: v for k, v in data.items()
-                                if k not in ("created_at", "updated_at")
-                            }
-                            safe_data.setdefault("created_by", request.user)
-                            safe_data["updated_by"] = request.user
-                            Model.objects.create(**safe_data)
-                            stats["created"] += 1
+                    instance = Model.objects.filter(uuid=obj_uuid).first() if obj_uuid else None
+
+                    if Model is Attendance:
+                        target_user = (
+                            instance.user if instance is not None
+                            else CustomUser.objects.filter(uuid=data.get("user_id")).first()
+                        )
+                        if not _can_write_attendance_for(request.user, target_user):
+                            stats["errors"].append({
+                                "model": model_label, "action": action,
+                                "error": "Not authorized to write attendance for this user.",
+                            })
+                            continue
+                        rule_error = _attendance_rule_error(target_user, data, is_create=instance is None)
+                        if rule_error:
+                            stats["errors"].append({"model": model_label, "action": action, "error": rule_error})
+                            continue
+
+                    if instance is not None:
+                        # LWW: skip if server record is newer
+                        client_ts_raw = data.get("updated_at")
+                        if client_ts_raw:
+                            client_ts = parse_datetime(str(client_ts_raw))
+                            if client_ts and instance.updated_at and client_ts <= instance.updated_at:
+                                stats["skipped"] += 1
+                                continue
+                        excluded_fields = {"uuid", "created_at", "updated_at", "created_by", "updated_by"}
+                        if Model is Attendance:
+                            # Ownership is immutable once created — otherwise the
+                            # scope check above (run against the *current* owner)
+                            # could be bypassed by reassigning the row afterwards.
+                            excluded_fields.add("user_id")
+                        for field, value in data.items():
+                            if field not in excluded_fields:
+                                setattr(instance, field, value)
+                        instance.updated_by = request.user
+                        instance.save()
+                        stats["updated"] += 1
                     else:
                         safe_data = {
                             k: v for k, v in data.items()
@@ -103,13 +181,17 @@ class BackupUploadView(BaseAPIView):
 
                 elif action == "delete":
                     obj_uuid = data.get("uuid")
-                    if obj_uuid:
-                        try:
-                            instance = Model.objects.get(uuid=obj_uuid)
-                            instance.soft_delete(deleted_by=request.user)
-                            stats["deleted"] += 1
-                        except Model.DoesNotExist:
-                            stats["skipped"] += 1
+                    instance = Model.objects.filter(uuid=obj_uuid).first() if obj_uuid else None
+                    if instance is None:
+                        stats["skipped"] += 1
+                    elif Model is Attendance and not _can_write_attendance_for(request.user, instance.user):
+                        stats["errors"].append({
+                            "model": model_label, "action": action,
+                            "error": "Not authorized to delete attendance for this user.",
+                        })
+                    else:
+                        instance.soft_delete(deleted_by=request.user)
+                        stats["deleted"] += 1
                 else:
                     stats["errors"].append({"action": action, "error": "Unknown action."})
 
@@ -140,7 +222,7 @@ class BackupDownloadView(BaseAPIView):
         user_id = request.query_params.get("user_id")
         since_raw = request.query_params.get("since")
 
-        qs = Attendance.active_objects.all()
+        qs = Attendance.active_objects.filter(_attendance_scope_q(request.user))
         if user_id:
             qs = qs.filter(user__uuid=user_id)
         if since_raw:
@@ -151,10 +233,12 @@ class BackupDownloadView(BaseAPIView):
         page = self.paginate_queryset(qs)
         if page is not None:
             attendance_payload = self.get_paginated_response(
-                AttendanceSerializer(page, many=True).data
+                AttendanceSerializer(page, many=True, context={"request": request}).data
             ).data
         else:
-            attendance_payload = AttendanceSerializer(qs, many=True).data
+            attendance_payload = AttendanceSerializer(
+                qs, many=True, context={"request": request}
+            ).data
 
         return Response(
             {"changes": {"attendance": attendance_payload}},
@@ -170,6 +254,10 @@ class WorkoutSyncUploadView(BaseAPIView):
     old sessions (it only accumulates), so each sync's payload already IS
     the user's full history. Replacing avoids double-counting a session
     that was already synced in a previous call.
+
+    An empty or missing `sessions` array is rejected with 422 and makes no
+    changes — it never wipes existing history, since that would otherwise
+    look identical to "user genuinely has nothing to sync".
 
     Payload:
         {
@@ -203,6 +291,11 @@ class WorkoutSyncUploadView(BaseAPIView):
         sessions_data = request.data.get("sessions", [])
         if not isinstance(sessions_data, list):
             return Response({"detail": "sessions must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+        if not sessions_data:
+            return Response(
+                {"detail": "sessions was empty or missing; no changes were made to avoid erasing existing history."},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         try:
             with transaction.atomic():
@@ -321,7 +414,9 @@ class BodyMeasurementSyncUploadView(BaseAPIView):
     user's entire server-side body-measurement history with what's in the
     request body.
 
-    Whole-history replace, same rationale as WorkoutSyncUploadView.
+    Whole-history replace, same rationale as WorkoutSyncUploadView. An empty
+    or missing `measurements` array is rejected with 422 and makes no
+    changes, for the same reason.
 
     Payload:
         {
@@ -344,6 +439,11 @@ class BodyMeasurementSyncUploadView(BaseAPIView):
         measurements_data = request.data.get("measurements", [])
         if not isinstance(measurements_data, list):
             return Response({"detail": "measurements must be a list."}, status=status.HTTP_400_BAD_REQUEST)
+        if not measurements_data:
+            return Response(
+                {"detail": "measurements was empty or missing; no changes were made to avoid erasing existing history."},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
 
         try:
             with transaction.atomic():

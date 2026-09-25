@@ -25,8 +25,16 @@ class NotificationTemplateViewSet(BaseModelViewSet):
         qs = NotificationTemplate.active_objects.select_related("gym")
         user = self.request.user
         if user.user_type == UserType.GYM_OWNER:
-            # Own gym's templates plus admin-authored global ones (gym=null).
-            qs = qs.filter(Q(gym_id=user.gym_details_id) | Q(gym__isnull=True))
+            if self.action in ("update", "partial_update_via_post", "destroy"):
+                # Writes: own gym's templates only — global (admin-authored,
+                # gym=null) templates are visible but read-only to a gym
+                # owner, so they're excluded from the queryset get_object()
+                # resolves against here. Out-of-scope UUID -> 404, same as
+                # GymViewSet's own-row write scoping.
+                qs = qs.filter(gym_id=user.gym_details_id)
+            else:
+                # Reads: own gym's templates plus admin-authored global ones.
+                qs = qs.filter(Q(gym_id=user.gym_details_id) | Q(gym__isnull=True))
         category = self.request.query_params.get("category")
         if category:
             qs = qs.filter(category=category)

@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from core.serializers import UploadedFileURLField
+from core.serializers import CleansUpReplacedFilesMixin, UploadedFileURLField
 from music.models import Playlist, PlaylistSong, Song
 
 
@@ -44,11 +44,12 @@ class SongSerializer(MediaRefMixin, serializers.ModelSerializer):
         return self._resolve(obj.asset_file, obj.asset_ref)
 
 
-class SongCreateSerializer(serializers.ModelSerializer):
+class SongCreateSerializer(CleansUpReplacedFilesMixin, serializers.ModelSerializer):
     """Write shape (multipart) for admin-added songs."""
 
     thumb = UploadedFileURLField(source="thumb_file", required=True)
     asset = serializers.FileField(source="asset_file", validators=[_validate_opus])
+    cleanup_file_fields = ("thumb_file", "asset_file")
 
     class Meta:
         model = Song
@@ -87,7 +88,7 @@ class PlaylistSerializer(MediaRefMixin, serializers.ModelSerializer):
         )
 
 
-class PlaylistCreateSerializer(serializers.ModelSerializer):
+class PlaylistCreateSerializer(CleansUpReplacedFilesMixin, serializers.ModelSerializer):
     """Write shape (multipart) for admin-added playlists."""
 
     icon = UploadedFileURLField(source="icon_file", required=True)
@@ -95,6 +96,7 @@ class PlaylistCreateSerializer(serializers.ModelSerializer):
     song_ids = serializers.ListField(
         child=serializers.IntegerField(), allow_empty=True, required=False
     )
+    cleanup_file_fields = ("icon_file", "cover_file")
 
     class Meta:
         model = Playlist

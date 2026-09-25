@@ -287,7 +287,11 @@ Managers: `objects` (all rows, **including** soft-deleted) and `active_objects` 
 
 Order: `CorsMiddleware`, `SecurityMiddleware`, `SessionMiddleware`, `CommonMiddleware`, `CsrfViewMiddleware`, `AuthenticationMiddleware`, `MessageMiddleware`, `XFrameOptionsMiddleware`, `core.middleware.RequestCounterMiddleware`.
 
-**`RequestCounterMiddleware`** — on every request whose path does **not** start with `/admin/`, `/media/`, `/static/`, `/schema/`, `/docs/`, increments today's (`timezone.localdate()`, UTC) `DailyRequestCount.count` with an atomic `F("count") + 1` update (creating the row with `count=1` if missing). It runs **before** the view, so it counts unauthenticated, failing, 404, `OPTIONS` preflight, and `HEAD /api/health/` requests too. Read back by `GET /api/reports/api-requests-today/` (admin only). No response headers or body are changed.
+**`RequestCounterMiddleware`** — runs **after** the view now (it needs the response status), so it increments today's (`timezone.localdate()`, UTC) `DailyRequestCount.count` with an atomic `F("count") + 1` update (creating the row with `count=1` if missing) only for a request that both:
+- has a path that does **not** start with `/admin/`, `/media/`, `/static/`, `/schema/`, `/docs/`, or `/api/health/`, **and**
+- didn't end in `401` (failed authentication — "pre-auth") or `404` (no matching route).
+
+A `403` (authenticated but not permitted) still counts — the caller did reach a real, authorized-checked endpoint. `OPTIONS` preflight still counts if it isn't 401/404. Read back by `GET /api/reports/api-requests-today/` (admin only). No response headers or body are changed.
 
 CSRF middleware is present but does not affect API calls (DRF views are CSRF-exempt and JWT auth doesn't enforce CSRF). It does apply to the Django admin.
 
@@ -398,7 +402,7 @@ Blank (`""`) is allowed on `CustomUser.gender`.
 | `cash` | Cash |
 | `online` | Online |
 
-Note: the Phase-3 input serializer `MemberPaymentSerializer.mode` (`POST /api/payments/`) instead declares `ChoiceField(choices=["Cash", "Online"])` — **capitalised** values, which differ from the model's `cash`/`online`. See §8 for how it is mapped.
+Note: the Phase-3 input serializer `MemberPaymentSerializer.mode` (`POST /api/payments/`) declares `ChoiceField(choices=["cash", "online"])`, matching the model's values directly (no case-mapping). See §8.
 
 ### Payment `status` (`accounts.models.PaymentStatus`)
 
@@ -469,9 +473,12 @@ Authenticated endpoints (`logout`, `profile`, `profile/update`, `change-password
 | `401`  | No `Authorization` header                              | `{"data": null, "message": "Authentication credentials were not provided.", "status": 401, "time": "..."}` |
 | `401`  | Access token is malformed, expired, or a refresh token was sent | `data: null`, `message: "Given token not valid for any token type"` (SimpleJWT `InvalidToken`) |
 | `401`  | Token's user no longer exists / has `is_active = false` | `message: "User not found"` / `"User is inactive"` (SimpleJWT defaults)                             |
+| `401`  | Token was issued before the user's password last changed | `message: "The user's password has been changed."` (SimpleJWT `CHECK_REVOKE_TOKEN`)                |
 | `405`  | Wrong HTTP method (e.g. `PUT`/`PATCH` on `/auth/profile/update/`) | `data: null`, `message: "Method \"PUT\" not allowed."`                                     |
 
-> **Important:** JWT authentication checks only the Django `is_active` flag. It does **not** check `status` or `is_deleted`. A user whose `status` becomes `disabled`, `suspended`, or `deleted` after logging in can keep using their existing access token until it expires, and can keep refreshing it (see the note under `/auth/token/refresh/`). `status` is enforced only at login.
+> **`CustomUser.save()` keeps `is_active` in lockstep with `status`/`is_deleted`** (`is_active = status == "active" and not is_deleted`, recomputed on every save regardless of what's passed to `update_fields`). Since SimpleJWT's `JWTAuthentication.get_user()` checks `is_active` on **every** authenticated request (not just at login), disabling, suspending, or soft-deleting a user now revokes their existing access token immediately — no waiting for it to expire, and no separate blacklist bookkeeping needed. Re-enabling a user restores `is_active = True`, and their still-unexpired tokens work again immediately (no forced re-login).
+>
+> **`SIMPLE_JWT["CHECK_REVOKE_TOKEN"] = True`** embeds an md5 hash of the current password (`REVOKE_TOKEN_CLAIM = "hash_password"`) in every access/refresh token at issue time, and `get_user()` compares it against the user's current password on every request. Changing a password therefore invalidates every previously-issued token immediately, including ones obtained via `/auth/token/refresh/` from an old refresh token (the refresh flow copies claims verbatim onto the new access token, so the stale hash carries forward and still fails the check).
 
 ---
 
@@ -495,13 +502,13 @@ JSON, form-encoded, or multipart are all accepted (the global parsers).
 #### Processing order
 
 1. Field validation (both fields required and non-blank).
-2. **Pre-check (before the password is verified):** the user is looked up by `phone_number`. If they exist, their account state is checked in this order:
+2. **Password check first:** the user is looked up by `phone_number` and, if found, `check_password()` is run directly against their stored password hash — independent of account status, so this happens even for a disabled/suspended/deleted account. If the phone number isn't registered, or the password doesn't match, the response is the generic 401 `"Invalid phone number or password."` **regardless of account status.** This is what prevents a wrong-password attempt from revealing whether a phone number is registered or what state that account is in.
+3. **Only once the password has been confirmed correct** is account state checked, in this order:
    - `is_deleted = true` or `status = deleted` → 403 `"Account has been deleted."`
    - `status = disabled` → 403 `"Account is disabled."`
    - `status = suspended` → 403 `"Account is suspended."`
    - any other non-`active` status → 403 `"Account is not active."` (not reachable with the current `UserStatus` choices, but present in code)
-   - Because this runs before password verification, a non-active account gets its 403 **even when the password is wrong**. This also reveals whether a phone number is registered.
-3. Standard SimpleJWT authentication (Django `ModelBackend`, which also rejects `is_active = false`). Any failure here becomes a generic 401.
+4. If status is `active`, `TokenObtainPairSerializer.validate()` runs as normal (re-verifies the password via Django's `ModelBackend`, which also rechecks `is_active` — always `True` here since status is `active`) and issues the token pair.
 
 #### Side effects
 
@@ -531,7 +538,7 @@ The view returns `{"detail": "Login successful", "refresh", "access", "user"}`. 
 | `data.user.phone_number` | string       | Phone number                                                      |
 | `data.user.user_type`    | string       | `admin` \| `gym_owner` \| `trainer` \| `member`                   |
 | `data.user.status`       | string       | Always `active` on success (other statuses are rejected)          |
-| `data.user.gym_id`       | string (UUID) \| null | UUID of the gym-owner **user** this account belongs to (trainers/members). `null` for admins and gym owners. |
+| `data.user.gym_owner_id` | string (UUID) \| null | UUID of the gym-owner **user** this account belongs to (trainers/members). `null` for admins and gym owners. |
 | `data.user.trainer_id`   | string (UUID) \| null | UUID of the assigned trainer user (members only), else `null` |
 
 > The login snapshot does **not** include `gym_uuid` (the gym owner's `Gym` master record). Use `GET /auth/profile/` for that.
@@ -559,7 +566,7 @@ The view returns `{"detail": "Login successful", "refresh", "access", "user"}`. 
       "phone_number": "9876543210",
       "user_type": "gym_owner",
       "status": "active",
-      "gym_id": null,
+      "gym_owner_id": null,
       "trainer_id": null
     }
   },
@@ -608,9 +615,9 @@ Exchange a valid refresh token for a new access token **and a new, rotated refre
 #### Side effects
 
 - `ROTATE_REFRESH_TOKENS = True` and `BLACKLIST_AFTER_ROTATION = True`. The submitted refresh token is **blacklisted**, and a new refresh token with a fresh `jti`, `iat`, and `exp` is returned. **Clients must store the new `refresh` from every response.** Reusing the old one returns 401.
-- The new tokens copy the custom `user_type` and `status` claims from the old refresh token. Those claims are not re-read from the database.
-- The test `AuthTests.test_token_refresh` confirms that both `access` and `refresh` are returned under `data`. The blacklisting and claim-copy behaviour is taken from `djangorestframework_simplejwt==5.5.0` (pinned in `requirements.txt`). It was not re-verified against the installed package source.
-- SimpleJWT 5.5.0's `TokenRefreshSerializer` is expected to reject a token whose user fails `USER_AUTHENTICATION_RULE` (i.e. `is_active = false`). It does **not** check `status`, so disabled or suspended users can keep refreshing. The active-user check was not re-verified against the installed source.
+- The new tokens copy the custom `user_type`, `status`, and `hash_password` claims from the old refresh token verbatim (not re-read from the database). This means a refresh token issued before a password change still produces a new access token carrying the *old* `hash_password` claim, so that new access token still fails `CHECK_REVOKE_TOKEN` on its very first use — the stale hash never gets "refreshed" into a valid one.
+- The test `AuthTests.test_token_refresh` confirms that both `access` and `refresh` are returned under `data`. The blacklisting and claim-copy behaviour is taken from `djangorestframework_simplejwt==5.5.0` (pinned in `requirements.txt`).
+- `TokenRefreshSerializer` rejects a token whose user fails `USER_AUTHENTICATION_RULE` (i.e. `is_active = false`). Since `CustomUser.save()` now keeps `is_active` in sync with `status`/`is_deleted`, disabled, suspended, and soft-deleted users can no longer refresh either.
 
 #### Response
 
@@ -675,9 +682,8 @@ Blacklist the given refresh token so it can no longer be used to refresh.
 
 #### Side effects and caveats
 
-- Calls `RefreshToken(refresh).blacklist()`, which creates a `BlacklistedToken` row.
-- The **access token is not revoked**. It stays valid until its own `exp`. Clients should discard it locally.
-- The view does **not** check that the refresh token belongs to `request.user`. Any authenticated user holding another user's valid refresh token can blacklist it.
+- Decodes the token, then compares its `user_id` claim against the authenticated caller's `uuid` — a mismatch returns `403` and the token is **not** touched. Only then does it call `RefreshToken(refresh).blacklist()`, which creates a `BlacklistedToken` row.
+- The **access token is not revoked by this call** — it stays valid until its own `exp`, or until it separately fails the `is_active`/`CHECK_REVOKE_TOKEN` checks described in [§1](#1-authentication) (e.g. if the account is disabled or the password changes). Clients should still discard the access token locally on logout.
 
 #### Response
 
@@ -711,6 +717,7 @@ Blacklist the given refresh token so it can no longer be used to refresh.
 | ------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
 | `400`  | `refresh` missing/blank                                                                  | `data` = `message` = `{"refresh": ["This field is required."]}`         |
 | `400`  | Token malformed, expired, wrong type (e.g. an access token was sent), or already blacklisted | `data` = `message` = `"Invalid or already blacklisted token."`      |
+| `403`  | `refresh` token's `user_id` claim doesn't match the authenticated caller                 | `data` = `message` = `"This refresh token does not belong to the authenticated user."` |
 | `401`  | Missing/invalid access token                                                             | See [Common errors](#common-errors-on-authenticated-endpoints)         |
 
 ---
@@ -738,7 +745,7 @@ Serializer: `UserMeSerializer`. Every field is read-only.
 | `data.experience_level` | string \| null        | Free text, max 50 chars                                                                                                      |
 | `data.user_type`        | string                | `admin` \| `gym_owner` \| `trainer` \| `member`                                                                              |
 | `data.status`           | string                | `active` \| `disabled` \| `suspended` \| `deleted`                                                                           |
-| `data.gym_id`           | string (UUID) \| null | UUID of the gym-owner **user** this account belongs to (trainers/members). `null` for gym owners and admins.                |
+| `data.gym_owner_id`     | string (UUID) \| null | UUID of the gym-owner **user** this account belongs to (trainers/members). `null` for gym owners and admins.                |
 | `data.gym_uuid`         | string (UUID) \| null | UUID of the `Gym` master record (`gym_details`). Set only for `gym_owner` accounts that have one, otherwise `null`.        |
 | `data.trainer_id`       | string (UUID) \| null | UUID of the assigned trainer user (members), else `null`                                                                     |
 | `data.created_at`       | string (ISO datetime, UTC) | Account creation timestamp                                                                                              |
@@ -760,7 +767,7 @@ Serializer: `UserMeSerializer`. Every field is read-only.
     "experience_level": null,
     "user_type": "gym_owner",
     "status": "active",
-    "gym_id": null,
+    "gym_owner_id": null,
     "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
     "trainer_id": null,
     "created_at": "2025-01-10T08:30:00.123456Z"
@@ -785,7 +792,7 @@ Partially update the authenticated user's own profile. The view calls `partial=T
 
 **Permission:** Authenticated (any role, including admin)
 
-Serializer: `ProfileUpdateSerializer`. Read-only fields are **silently ignored** if sent: `uuid`, `phone_number`, `user_type`, `status`, `gym_id`, `gym_uuid`, `trainer_id`, `created_at`, `age`.
+Serializer: `ProfileUpdateSerializer`. Read-only fields are **silently ignored** if sent: `uuid`, `phone_number`, `user_type`, `status`, `gym_owner_id`, `gym_uuid`, `trainer_id`, `created_at`, `age`.
 
 #### Request
 
@@ -834,7 +841,7 @@ Same fields as `GET /auth/profile/` (see that table), with the updated values, u
     "experience_level": "5 years",
     "user_type": "gym_owner",
     "status": "active",
-    "gym_id": null,
+    "gym_owner_id": null,
     "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
     "trainer_id": null,
     "created_at": "2025-01-10T08:30:00.123456Z"
@@ -877,7 +884,7 @@ Change the authenticated user's password.
 #### Side effects
 
 - Calls `user.set_password(new_password)` and saves `password` and `updated_at`.
-- **Existing JWTs are not invalidated.** Access and refresh tokens issued before the change keep working until they expire or are blacklisted. Nothing is blacklisted automatically.
+- **Existing JWTs are invalidated immediately**, without needing to blacklist anything: `SIMPLE_JWT["CHECK_REVOKE_TOKEN"] = True` embeds an md5 hash of the password in every issued token, and `JWTAuthentication.get_user()` rejects a token whose embedded hash no longer matches the current password on every subsequent request (see [§1](#1-authentication)).
 
 #### Response
 
@@ -997,7 +1004,7 @@ There are no field filters on `/gyms/`. `GymViewSet.filter_backends` overrides t
 
 `created_at`, `created_by`, `updated_by`, `is_deleted` and `deleted_at` exist on the model but are **not** returned.
 
-**Image URL note:** `gym_picture` (and `profile_picture` in Section 3) is an `UploadedFileURLField`. When the serializer has the request in its context (list/retrieve/create/PUT/`update/`), the URL is absolute, e.g. `http://<host>/media/uploads/<hex>.jpg`. The custom `enable`, `disable` and `assign-trainer` actions build their serializer **without** a request context, so they return a relative path such as `/media/uploads/<hex>.jpg`. Files uploaded through `POST /api/upload-file/` live under `media/uploads/`. The model's `upload_to="gym_pictures/"` only applies to files assigned outside the API (for example, in Django admin).
+**Image URL note:** `gym_picture` (and `profile_picture` in Section 3) is an `UploadedFileURLField`. Every action — including the custom `enable`, `disable` and `assign-trainer` actions, which build the serializer via `self.get_serializer(instance)` specifically so the request is present in its context — returns an absolute URL, e.g. `http://<host>/media/uploads/<hex>.jpg`. Files uploaded through `POST /api/upload-file/` live under `media/uploads/`. The model's `upload_to="gym_pictures/"` only applies to files assigned outside the API (for example, in Django admin).
 
 **Location rule:** `latitude` and `longitude` are nullable at the DB level, so legacy rows keep working. `GymSerializer` redeclares them as `DecimalField(max_digits=9, decimal_places=6, allow_null=False)`, which makes them required on `POST /gyms/` and on a full `PUT`, and rejects an explicit `null` everywhere. A partial `POST .../update/` may omit them (the location stays unchanged) or change them, but can't clear them. **Range is not validated**: a latitude outside −90..90 or a longitude outside −180..180 is accepted as long as it fits 9 digits and 6 decimal places. These coordinates back the geofence check on [Attendance](#9-attendance) check-in/out.
 
@@ -1277,11 +1284,11 @@ Partial update of a gym, implemented as a `POST` detail action that calls `parti
 
 ### DELETE `/gyms/{uuid}/`
 
-**Soft delete.** Calls `Gym.soft_delete()` (`core.models.BaseModel`), which sets `is_deleted = true`, `deleted_at = now`, and `updated_by = caller`.
+**Soft delete, with a cascade.** `Gym.soft_delete()` (overridden, `accounts/models.py`) sets `is_deleted = true`, `deleted_at = now`, `updated_by = caller` on the `Gym` row itself, then soft-deletes every owner of that gym (`self.owners`) — which in turn cascades to that owner's trainers and members exactly as `DELETE /users/gym-owners/{uuid}/` does.
 
 **Permission:** `IsAdmin`. Only non-deleted gyms can be targeted.
 
-**Side effects:** None beyond the gym row. The owner's `gym_details` FK is left pointing at the deleted gym, so their `gym_uuid` is unchanged. The gym disappears from `GET /gyms/` and `GET /gyms/{uuid}/` (which returns `404`), and the owner can no longer edit it (`404`). Owners, trainers and members are **not** disabled or deleted.
+**Side effects:** The gym disappears from `GET /gyms/` and `GET /gyms/{uuid}/` (which returns `404`), and the owner can no longer edit it (`404`) — moot anyway, since the owner is now soft-deleted too. The owner's `gym_details` FK is left pointing at the (now also deleted) gym row; nothing clears it. Their `Membership`/`Payment`/`Attendance` history and their trainers'/members' history rows are deliberately left untouched (see [§15.3](#153-behaviour-that-differs-from-what-you-might-expect)).
 
 #### Response
 
@@ -1305,7 +1312,7 @@ Restore a soft-deleted gym. Sets `is_deleted = false`, `deleted_at = null`, and 
 
 #### Response
 
-`200 OK`. `data` is the Gym object, serialized **without** request context, so `gym_picture` is a relative path (`/media/uploads/...`) rather than an absolute URL.
+`200 OK`. `data` is the Gym object, serialized via `self.get_serializer(gym)` so `gym_picture` is an absolute URL like every other endpoint.
 
 #### Example JSON Response
 
@@ -1314,7 +1321,7 @@ Restore a soft-deleted gym. Sets `is_deleted = false`, `deleted_at = null`, and 
   "data": {
     "uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
     "name": "Iron Paradise",
-    "gym_picture": "/media/uploads/3f9c2a7b1d4e4f6a8b0c1d2e3f4a5b6c.jpg",
+    "gym_picture": "http://localhost:8000/media/uploads/3f9c2a7b1d4e4f6a8b0c1d2e3f4a5b6c.jpg",
     "latitude": "18.520430",
     "longitude": "73.856743"
   },
@@ -1383,12 +1390,12 @@ All three are `BaseModelViewSet` subclasses, which exposes the following routes.
 
 **Common behaviors and side effects:**
 
-- **Soft delete** (`DELETE`) calls `CustomUser.soft_delete()`: `is_deleted = true`, `status = "deleted"`, `deleted_at = now`, `updated_by = caller`. `is_active` is **not** changed. Nothing cascades:
+- **Soft delete** (`DELETE`) calls `CustomUser.soft_delete()`: `is_deleted = true`, `status = "deleted"`, `deleted_at = now`, `updated_by = caller`. `CustomUser.save()` recomputes `is_active = (status == "active" and not is_deleted)` on every save, so this also flips `is_active` to `False` — see below. Nothing cascades:
   - Deleting a gym owner leaves their trainers, members, `Gym` record and memberships untouched.
   - Deleting a trainer leaves members' `trainer_id` pointing at the deleted trainer.
   - There's **no API to restore** a soft-deleted user. `enable` only sees non-deleted users.
-- **Disable/enable** only set `status` (`disabled` / `active`) plus `updated_by`/`updated_at`. They don't cascade (disabling a gym owner doesn't disable their trainers or members) and don't touch `is_deleted`.
-- **Login vs. existing tokens:** `POST /auth/login/` rejects `disabled`, `suspended` and `deleted` users. However, JWT authentication uses simplejwt's `default_user_authentication_rule`, which only checks `is_active`, and the permission classes only check `user_type`. **An already-issued access token for a disabled or deleted user keeps working until it expires** (default 24 h). This is based on the configured settings and wasn't run live.
+- **Disable/enable** set `status` (`disabled` / `active`) plus `updated_by`/`updated_at`; `is_active` is derived automatically from `status` on save (see below). They don't cascade (disabling a gym owner doesn't disable their trainers or members) and don't touch `is_deleted`.
+- **Login vs. existing tokens:** `POST /auth/login/` rejects `disabled`, `suspended` and `deleted` users at login. `CustomUser.save()` also keeps `is_active` equal to `status == "active" and not is_deleted` on every save (regardless of which endpoint changed `status`), and JWT authentication (`JWTAuthentication.get_user()`, plus `TokenRefreshSerializer`'s `USER_AUTHENTICATION_RULE`) checks `is_active` on **every** request/refresh, not just at login. **An already-issued access token for a disabled, suspended, or soft-deleted user therefore stops working on its very next use** — no need to wait for it to expire.
 - **Phone uniqueness:** On `create`, each viewset first checks `CustomUser.objects` (**including soft-deleted users**) and returns `409` `"This phone number is already registered."` before the serializer runs. So a deleted user's number can't be reused. The phone number is otherwise free text (max 15 chars, no format validation).
 - **Password rules** (`_validate_password_strength`, on create and on trainer/member password change). Every failing rule is returned in one list:
   - `"Password must be at least 8 characters long."`
@@ -1398,9 +1405,9 @@ All three are `BaseModelViewSet` subclasses, which exposes the following routes.
   - `"Password must contain at least one special character."`
 
   The password is hashed with `set_password()` and is never returned.
-- **`gym_id` vs `gym_uuid`:** On trainer and member responses, `gym_id` is the **gym owner's user UUID** (`CustomUser.gym` FK), **not** the `Gym` master record's `uuid`. The `Gym` master UUID is exposed only as `gym_uuid` on gym-owner responses.
+- **`gym_owner_id` vs `gym_uuid`:** On trainer, member, and `/auth/me/`/`/auth/profile/update/` responses, `gym_owner_id` is the **gym owner's user UUID** (`CustomUser.gym` FK) — named that way specifically so it isn't mistaken for the `Gym` master record's own `uuid`, which is exposed separately as `gym_uuid` (only present on `/auth/me/`/`/auth/profile/update/`, and on gym-owner responses). This field was called `gym_id` before it was renamed for clarity — if you're looking at an old client build or cached response, that's the same value under the old name.
 - **Model validation:** Create and update serializers call `full_clean()` before saving, which runs `CustomUser._validate_relationships()`. Its errors surface as `400` with `{"__all__": ["..."]}`, for example `"Trainer must belong to the same gym as the member."`. The serializer-level checks normally catch these first.
-- **Images:** `profile_picture` accepts only a URL returned by `POST /api/upload-file/` (or `null`). The error messages are the same as for `gym_picture` in Section 2. The `disable`, `enable` and `assign-trainer` actions return it as a relative `/media/...` path; other endpoints return an absolute URL.
+- **Images:** `profile_picture` accepts only a URL returned by `POST /api/upload-file/` (or `null`). The error messages are the same as for `gym_picture` in Section 2. Every action — including `disable`, `enable` and `assign-trainer`, which build their serializer via `self.get_serializer(instance)` — returns it as an absolute URL.
 
 ---
 
@@ -1586,8 +1593,9 @@ No `Payment` or `Membership` rows are created.
 | ------ | ---------------------------------------- | ------------------------------------------------------------------------------------------ |
 | `400`  | Missing required fields                  | e.g. `{"gym_name": ["This field is required."], "gym_latitude": [...], "gym_longitude": [...], "membership": [...]}` |
 | `400`  | Bad `membership`                         | `{"membership": ["\"Weekly\" is not a valid choice."]}`                                    |
-| `400`  | Bad `gender`                             | `{"gender": ["\"x\" is not a valid choice."]}`                                             |
-| `400`  | Weak password                            | `{"password": ["Password must contain at least one uppercase letter.", ...]}`              |
+| `400`  | Missing `gender`                         | Checked before the serializer runs (`_validate_friendly_signup_fields`, `accounts/user_views.py`) — message: `"Please select a gender."`, `data: null` (not the usual field-error dict) |
+| `400`  | Bad `gender` (present but not a valid choice) | `{"gender": ["\"x\" is not a valid choice."]}`                                        |
+| `400`  | Weak password                            | Also checked before the serializer runs, joining every failed rule into one sentence — message: `"Password must contain at least one uppercase letter. Password must contain at least one digit."`, `data: null` |
 | `400`  | Bad `profile_picture` / date / decimals  | Field-error dict (messages as in Section 2)                                               |
 | `401`  | Unauthenticated                          | message: `"Authentication credentials were not provided."`                                 |
 | `403`  | Caller isn't an admin                    | message: `"Admin access required."`                                                        |
@@ -1813,7 +1821,7 @@ Soft-delete a gym owner: `is_deleted = true`, `status = "deleted"`, `deleted_at 
 
 **Permission:** `IsAdmin`
 
-**Side effects:** None beyond the owner row. Their `Gym` record stays active, and their trainers, members and memberships are **not** deleted or disabled. Those trainers and members still point at the deleted owner through `gym_id`. There's no API to undo this.
+**Side effects:** Their `Gym` record stays active (deletion doesn't propagate upward). `CustomUser.soft_delete()` cascades **downward**, though: every trainer and member with `gym = this owner` is also soft-deleted (each trainer's own cascade in turn sets `trainer = null` on their members, rather than deleting them — see [§15.3](#153-behaviour-that-differs-from-what-you-might-expect)). Their `Membership`/`Payment`/`Attendance` history rows are deliberately left untouched. There's no API to undo any of this.
 
 #### Response
 
@@ -1831,13 +1839,13 @@ Soft-delete a gym owner: `is_deleted = true`, `status = "deleted"`, `deleted_at 
 
 ### POST `/users/gym-owners/{uuid}/disable/`
 
-Set `status = "disabled"` (plus `updated_by`/`updated_at`). No request body. This blocks new logins but doesn't revoke existing tokens and doesn't cascade to the owner's trainers or members.
+Set `status = "disabled"` (plus `updated_by`/`updated_at`). No request body. This blocks new logins, and — since `CustomUser.save()` derives `is_active` from `status` — also revokes any already-issued access/refresh token on its next use. It doesn't cascade to the owner's trainers or members.
 
 **Permission:** `IsAdmin`
 
 #### Response
 
-`200 OK`. `data` is the Gym-owner object, with `trainer_count`/`member_count` included and `profile_picture` as a relative path.
+`200 OK`. `data` is the Gym-owner object, with `trainer_count`/`member_count` included and `profile_picture` as an absolute URL.
 
 #### Example JSON Response
 
@@ -1851,7 +1859,7 @@ Set `status = "disabled"` (plus `updated_by`/`updated_at`). No request body. Thi
     "date_of_birth": "1985-03-20",
     "age": 41,
     "gender": "male",
-    "profile_picture": "/media/uploads/9a8b7c6d5e4f40312a1b2c3d4e5f6a7b.png",
+    "profile_picture": "http://localhost:8000/media/uploads/9a8b7c6d5e4f40312a1b2c3d4e5f6a7b.png",
     "user_type": "gym_owner",
     "status": "disabled",
     "gym_uuid": "8b1e2f3a-4c5d-4e6f-9a0b-1c2d3e4f5a6b",
@@ -1918,7 +1926,7 @@ Paginated list of **Trainer objects** (`TrainerDetailSerializer`):
 | `profile_picture` | string \| null  | Absolute image URL                                    |
 | `user_type`       | string          | Always `trainer`                                      |
 | `status`          | string          | `active` \| `disabled` \| `suspended` \| `deleted`    |
-| `gym_id`          | UUID \| null    | The **gym owner's user UUID** (not the `Gym` master UUID) |
+| `gym_owner_id`          | UUID \| null    | The **gym owner's user UUID** (not the `Gym` master UUID) |
 | `created_at`      | datetime        |                                                       |
 
 `experience_level` is **not** returned, even though it's accepted on create.
@@ -1939,7 +1947,7 @@ Paginated list of **Trainer objects** (`TrainerDetailSerializer`):
       "profile_picture": null,
       "user_type": "trainer",
       "status": "active",
-      "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "created_at": "2026-09-02T09:00:00.000000Z"
     }
   ],
@@ -1989,7 +1997,7 @@ Create a trainer in the requesting gym owner's gym. The server sets `user_type =
 
 #### Response
 
-`201 Created`. `data` is serialized with `TrainerCreateSerializer`, so it has **no** `uuid`, `age`, `user_type`, `status`, `gym_id` or `created_at`. To get the new trainer's `uuid`, list `GET /users/trainers/?search=<phone>`.
+`201 Created`. `data` is serialized with `TrainerCreateSerializer`, so it has **no** `uuid`, `age`, `user_type`, `status`, `gym_owner_id` or `created_at`. To get the new trainer's `uuid`, list `GET /users/trainers/?search=<phone>`.
 
 | Field              | Type           |
 | ------------------ | -------------- |
@@ -2039,7 +2047,9 @@ Create a trainer in the requesting gym owner's gym. The server sets `user_type =
 | Status | When                                  | Body                                                                                   |
 | ------ | ------------------------------------- | -------------------------------------------------------------------------------------- |
 | `400`  | Trainer limit reached                 | `{"trainer_limit": "Trainer limit of 5 has been reached."}` (a plain string, not a list; appears in both `data` and `message`) |
-| `400`  | Field validation (missing fields, weak password, bad gender, etc.) | Field-error dict                                              |
+| `400`  | Missing `gender`                      | Checked before the serializer runs (`_validate_friendly_signup_fields`) — message: `"Please select a gender."`, `data: null` |
+| `400`  | Weak password                         | Also checked before the serializer runs, joining every failed rule into one sentence — message: `"Password must contain at least one uppercase letter. Password must contain at least one digit."`, `data: null` |
+| `400`  | Field validation (missing other fields, bad gender choice, etc.) | Field-error dict                                              |
 | `401`  | Unauthenticated                       | message: `"Authentication credentials were not provided."`                             |
 | `403`  | Caller isn't a gym owner              | message: `"Gym Owner access required."`                                                |
 | `409`  | Phone already registered              | message: `"This phone number is already registered."`                                  |
@@ -2071,7 +2081,7 @@ Retrieve one trainer.
     "profile_picture": null,
     "user_type": "trainer",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "created_at": "2026-09-02T09:00:00.000000Z"
   },
   "message": "",
@@ -2108,7 +2118,7 @@ Full update of a trainer (`TrainerDetailSerializer`). `updated_by` is set to the
 | `status`          | string         | No       | `active` \| `disabled` \| `suspended` \| `deleted` (writing `deleted` doesn't soft-delete; see the gym-owner `PUT` caveat) |
 | `password`        | string         | No       | Write-only. Strong-password rules, not blank. Resets the trainer's password.                        |
 
-No field is required, even on `PUT`. `phone_number`, `uuid`, `user_type`, `gym_id` and `created_at` are read-only, so a trainer's phone number **can't** be changed. `experience_level` isn't in this serializer, so it can't be updated here.
+No field is required, even on `PUT`. `phone_number`, `uuid`, `user_type`, `gym_owner_id` and `created_at` are read-only, so a trainer's phone number **can't** be changed. `experience_level` isn't in this serializer, so it can't be updated here.
 
 #### Response
 
@@ -2140,7 +2150,7 @@ No field is required, even on `PUT`. `phone_number`, `uuid`, `user_type`, `gym_i
     "profile_picture": null,
     "user_type": "trainer",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "created_at": "2026-09-02T09:00:00.000000Z"
   },
   "message": "",
@@ -2191,7 +2201,7 @@ Partial update of a trainer. It takes the same fields and rules as `PUT`. This i
     "profile_picture": null,
     "user_type": "trainer",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "created_at": "2026-09-02T09:00:00.000000Z"
   },
   "message": "",
@@ -2212,7 +2222,7 @@ Soft-delete a trainer: `is_deleted = true`, `status = "deleted"`, `deleted_at = 
 
 **Permission:** `IsGymOwner`, scoped to the caller's own gym.
 
-**Side effects:** Members assigned to this trainer are **not** reassigned or cleared. Their `trainer_id` still holds the deleted trainer's UUID. The deleted trainer can't log in again, but an already-issued token keeps working until it expires (see the common notes above). No undo is available.
+**Side effects:** Members assigned to this trainer are **unassigned, not deleted** — `CustomUser.soft_delete()` sets `trainer_id = null` on every member who had this trainer, leaving the members themselves fully active. The deleted trainer can't log in again, and an already-issued token is revoked on its next use (see the common notes above). No undo is available.
 
 #### Response
 
@@ -2236,7 +2246,7 @@ Set `status = "disabled"`. No body. The trainer still counts toward `trainer_lim
 
 #### Response
 
-`200 OK`. `data` is the Trainer object (`profile_picture` as a relative path).
+`200 OK`. `data` is the Trainer object (`profile_picture` as an absolute URL).
 
 #### Example JSON Response
 
@@ -2253,7 +2263,7 @@ Set `status = "disabled"`. No body. The trainer still counts toward `trainer_lim
     "profile_picture": null,
     "user_type": "trainer",
     "status": "disabled",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "created_at": "2026-09-02T09:00:00.000000Z"
   },
   "message": "",
@@ -2312,7 +2322,7 @@ Paginated list of **Member objects** (`MemberDetailSerializer`):
 | `profile_picture` | string \| null  | Absolute image URL                                       |
 | `user_type`       | string          | Always `member`                                          |
 | `status`          | string          | `active` \| `disabled` \| `suspended` \| `deleted`       |
-| `gym_id`          | UUID \| null    | The **gym owner's user UUID**                            |
+| `gym_owner_id`          | UUID \| null    | The **gym owner's user UUID**                            |
 | `trainer_id`      | UUID \| null    | Assigned trainer's user UUID                             |
 | `created_at`      | datetime        |                                                          |
 
@@ -2334,7 +2344,7 @@ Paginated list of **Member objects** (`MemberDetailSerializer`):
       "profile_picture": null,
       "user_type": "member",
       "status": "active",
-      "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "created_at": "2026-09-05T07:00:00.000000Z"
     }
@@ -2365,7 +2375,7 @@ Create a member in the requesting gym owner's gym. The server sets `user_type = 
 
 **Permission:** `IsGymOwner` (admins get `403`).
 
-**Order of checks:** duplicate phone (`409`), then serializer validation (including `trainer_uuid` resolution), then `full_clean()`, then save.
+**Order of checks:** duplicate phone (`409`), then missing `gender` / weak `password` (`400`, friendly single-string message, via `_validate_friendly_signup_fields`), then serializer validation (including `trainer_uuid` resolution), then `full_clean()`, then save.
 
 #### Request
 
@@ -2383,7 +2393,7 @@ Create a member in the requesting gym owner's gym. The server sets `user_type = 
 
 #### Response
 
-`201 Created`. `data` is serialized with `MemberCreateSerializer`, so it has **no** `uuid`, `age`, `user_type`, `status`, `gym_id`, `trainer_id` or `created_at`, and `trainer_uuid` is write-only. Find the new member via `GET /users/members/?search=<phone>`.
+`201 Created`. `data` is serialized with `MemberCreateSerializer`, so it has **no** `uuid`, `age`, `user_type`, `status`, `gym_owner_id`, `trainer_id` or `created_at`, and `trainer_uuid` is write-only. Find the new member via `GET /users/members/?search=<phone>`.
 
 | Field              | Type           |
 | ------------------ | -------------- |
@@ -2433,6 +2443,8 @@ Create a member in the requesting gym owner's gym. The server sets `user_type = 
 
 | Status | When                                         | Body                                                           |
 | ------ | -------------------------------------------- | -------------------------------------------------------------- |
+| `400`  | Missing `gender`                             | Checked before the serializer runs (`_validate_friendly_signup_fields`) — message: `"Please select a gender."`, `data: null` |
+| `400`  | Weak password                                | Also checked before the serializer runs, joining every failed rule into one sentence — message: `"Password must contain at least one uppercase letter. Password must contain at least one digit."`, `data: null` |
 | `400`  | `trainer_uuid` not a trainer in caller's gym | `{"trainer_uuid": ["Trainer not found in this gym."]}`         |
 | `400`  | `trainer_uuid` malformed                     | `{"trainer_uuid": ["Must be a valid UUID."]}`                  |
 | `400`  | Other field validation                       | Field-error dict                                               |
@@ -2467,7 +2479,7 @@ Retrieve one member.
     "profile_picture": null,
     "user_type": "member",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "created_at": "2026-09-05T07:00:00.000000Z"
   },
@@ -2491,7 +2503,7 @@ Retrieve one member.
 
 Full update of a member (`MemberDetailSerializer`). `updated_by` is set to the gym owner. The serializer's `update()` sets the fields, sets `trainer_id` only if the key was sent, hashes `password` if provided, runs `full_clean()`, then saves.
 
-**Permission:** `IsGymOwner`. Queryset: non-deleted members with `gym = request.user` (`404` otherwise). Admins get `403`.
+**Permission:** `IsGymOwner`. Queryset: non-deleted members with `gym = request.user` (`404` otherwise). Admins get `403`. `MemberViewSet.update()` additionally checks — before the queryset lookup — whether the target UUID belongs to the caller's own gym **and** is soft-deleted; if so, it returns a specific `404 "This member has been deleted and can no longer be updated."` instead of the generic not-found message, so the caller knows why, without revealing anything about a member outside their own gym.
 
 #### Request
 
@@ -2506,7 +2518,7 @@ Full update of a member (`MemberDetailSerializer`). `updated_by` is set to the g
 | `trainer_id`      | UUID \| null   | No       | Reassign the trainer (must be a non-deleted trainer with `gym = request.user`), or `null` to **clear** the trainer. Omitting it leaves the trainer unchanged. |
 | `password`        | string         | No       | Write-only. Strong-password rules, not blank                                                    |
 
-No field is required. `phone_number`, `uuid`, `user_type`, `gym_id` and `created_at` are read-only. `experience_level` and the membership fields can't be edited here.
+No field is required. `phone_number`, `uuid`, `user_type`, `gym_owner_id` and `created_at` are read-only. `experience_level` and the membership fields can't be edited here.
 
 #### Response
 
@@ -2538,7 +2550,7 @@ No field is required. `phone_number`, `uuid`, `user_type`, `gym_id` and `created
     "profile_picture": null,
     "user_type": "member",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "created_at": "2026-09-05T07:00:00.000000Z"
   },
@@ -2557,7 +2569,8 @@ No field is required. `phone_number`, `uuid`, `user_type`, `gym_id` and `created
 | `400`  | Model relationship check fails                | `{"__all__": ["Trainer must belong to the same gym as the member."]}` (normally pre-empted by the `trainer_id` check) |
 | `401`  | Unauthenticated                               | message: `"Authentication credentials were not provided."`       |
 | `403`  | Caller isn't a gym owner                      | message: `"Gym Owner access required."`                          |
-| `404`  | Not in the caller's gym                       | message: `"No CustomUser matches the given query."`              |
+| `404`  | Not in the caller's gym, doesn't exist, or bad UUID | message: `"No CustomUser matches the given query."`        |
+| `404`  | In the caller's own gym, but soft-deleted     | message: `"This member has been deleted and can no longer be updated."` |
 
 ---
 
@@ -2591,7 +2604,7 @@ Partial update of a member. It takes the same fields and rules as `PUT`. Send `t
     "profile_picture": null,
     "user_type": "member",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "trainer_id": null,
     "created_at": "2026-09-05T07:00:00.000000Z"
   },
@@ -2637,7 +2650,7 @@ Set `status = "disabled"`. No body. Memberships and the trainer assignment are u
 
 #### Response
 
-`200 OK`. `data` is the Member object (`profile_picture` as a relative path).
+`200 OK`. `data` is the Member object (`profile_picture` as an absolute URL).
 
 #### Example JSON Response
 
@@ -2654,7 +2667,7 @@ Set `status = "disabled"`. No body. Memberships and the trainer assignment are u
     "profile_picture": null,
     "user_type": "member",
     "status": "disabled",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "created_at": "2026-09-05T07:00:00.000000Z"
   },
@@ -2704,7 +2717,7 @@ Assign or reassign a member's trainer. It sets `member.trainer` and `updated_by`
 
 #### Response
 
-`200 OK`. `data` is the Member object (serialized without request context, so `profile_picture` is a relative path).
+`200 OK`. `data` is the Member object (`profile_picture` as an absolute URL).
 
 #### Example JSON Request
 
@@ -2729,7 +2742,7 @@ Assign or reassign a member's trainer. It sets `member.trainer` and `updated_by`
     "profile_picture": null,
     "user_type": "member",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "created_at": "2026-09-05T07:00:00.000000Z"
   },
@@ -2800,7 +2813,7 @@ No field filters (`status`, `gender`, ...) are available here.
 | `profile_picture` | string \| null   | Absolute media URL                                                |
 | `user_type`       | string           | Always `member`                                                   |
 | `status`          | string           | `active` \| `disabled` \| `suspended` \| `deleted`                |
-| `gym_id`          | UUID \| null     | UUID of the gym owner user the member belongs to                  |
+| `gym_owner_id`          | UUID \| null     | UUID of the gym owner user the member belongs to                  |
 | `trainer_id`      | UUID \| null     | Assigned trainer's UUID (always the caller here)                  |
 | `created_at`      | datetime         | Creation timestamp                                                |
 
@@ -2822,7 +2835,7 @@ No field filters (`status`, `gender`, ...) are available here.
       "profile_picture": null,
       "user_type": "member",
       "status": "active",
-      "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+      "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
       "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
       "created_at": "2025-06-01T07:00:00.000000Z"
     }
@@ -2870,7 +2883,7 @@ Same fields as the list item above (`MemberDetailSerializer`), as a single objec
     "profile_picture": null,
     "user_type": "member",
     "status": "active",
-    "gym_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "gym_owner_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
     "trainer_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "created_at": "2025-06-01T07:00:00.000000Z"
   },
@@ -2916,7 +2929,7 @@ Return the calling member's own profile.
 | `gender`           | string          | `male` \| `female` \| `other` \| `""`         |
 | `experience_level` | string \| null  | Free text, max 50 chars                       |
 
-Gym, trainer, status and membership fields are **not** returned here. Use `GET /auth/me/` for `gym_id`/`trainer_id`/`status`.
+Gym, trainer, status and membership fields are **not** returned here. Use `GET /auth/me/` for `gym_owner_id`/`trainer_id`/`status`.
 
 #### Example JSON Response
 
@@ -3109,13 +3122,13 @@ There is no `search` parameter on this endpoint.
 
 Create a membership record.
 
-**Permission:** `IsAdminOrGymOwner`. **Caution:** the code does **not** check that `member` belongs to the calling gym owner's gym. A gym owner can create a membership for any member UUID, including a member of another gym or a soft-deleted member. If the member is in another gym, the new record then falls outside the owner's own queryset and they can't read it back. Sets `created_by` and `updated_by` to the caller.
+**Permission:** `IsAdminOrGymOwner`. `member` must be an active (non-soft-deleted) member, and for a gym-owner caller it must belong to their own gym — `400 {"member": ["Member not found in this gym."]}` otherwise. Admins can target any gym's active members. Sets `created_by` and `updated_by` to the caller.
 
 #### Request
 
 | Field          | Type    | Required | Description / validation                                                                                                   |
 | -------------- | ------- | -------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `member`       | UUID    | Yes      | UUID of a user with `user_type == member`. The related-field queryset is limited to members through the model's `limit_choices_to`, and it uses the default manager, so soft-deleted members are accepted |
+| `member`       | UUID    | Yes      | UUID of an active (non-soft-deleted) user with `user_type == member`. The field's queryset is `CustomUser.active_objects.filter(user_type="member")`, explicitly declared on `MembershipSerializer` (not DRF's auto-generated field). For a gym owner, `validate_member` additionally requires `member.gym == request.user`. |
 | `start_date`   | string  | Yes      | `YYYY-MM-DD`                                                                                                               |
 | `end_date`     | string  | Yes      | `YYYY-MM-DD`, must be on or after `start_date`                                                                             |
 | `plan`         | string  | No       | Max 100 chars, may be blank (default `""`). Free text, not validated against any plan list                                 |
@@ -3168,14 +3181,13 @@ Create a membership record.
 | Status | When                                                             | Body                                                                                          |
 | ------ | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `400`  | Required field missing                                           | e.g. `{"member": ["This field is required."]}`                                                |
-| `400`  | `member` UUID isn't a member user (or doesn't exist)             | `{"member": ["Invalid pk \"<uuid>\" - object does not exist."]}`                              |
+| `400`  | `member` UUID doesn't exist, isn't a member, or is soft-deleted   | `{"member": ["Invalid pk \"<uuid>\" - object does not exist."]}` — the field's queryset is `CustomUser.active_objects.filter(user_type="member")`, so a soft-deleted member's UUID hits this same "does not exist" error, not a distinct message |
+| `400`  | (Gym owner only) `member` exists and is active, but belongs to a different gym | `{"member": ["Member not found in this gym."]}` (from `validate_member`)         |
 | `400`  | `end_date` before `start_date`                                   | `{"end_date": ["end_date must be on or after start_date."]}`                                  |
 | `400`  | Overlapping active membership                                    | `{"non_field_errors": ["An active membership already exists overlapping this date range."]}`  |
 | `400`  | Invalid `payment_mode`                                           | `{"payment_mode": ["\"x\" is not a valid choice."]}`                                          |
 | `400`  | Bad decimal                                                      | e.g. `{"amount_paid": ["Ensure that there are no more than 2 decimal places."]}`              |
 | `403`  | Trainer / member caller                                          | `message: "Admin or Gym Owner access required."`                                              |
-
-`MembershipSerializer.validate_member` would return `"User must be of type MEMBER."`. In practice it is unreachable, because the field's queryset (DRF 3.16 applies `limit_choices_to`) already rejects non-member UUIDs with the `Invalid pk` message above.
 
 ---
 
@@ -3225,7 +3237,7 @@ Full update. Every writable field is required: `member`, `start_date`, `end_date
 
 **Permission:** `IsAdminOrGymOwner` (scoped, so the target must be visible to the caller)
 
-Validation is the same as create (types, choices, `end_date >= start_date`), except that **the overlap check is skipped on update**. `member` can be changed to any member UUID. The gym owner's own gym isn't enforced here either. Updating does not touch the member's `CustomUser.membership_*` fields.
+Validation is the same as create (types, choices, `end_date >= start_date`), except that **the overlap check is skipped on update**. `member` can be reassigned, subject to the same `active_objects` + own-gym `validate_member` check as create (see above) — a gym owner can't reassign a membership to another gym's member or a soft-deleted one. Updating does not touch the member's `CustomUser.membership_*` fields.
 
 #### Example JSON Request
 
@@ -3471,7 +3483,7 @@ All list fields above, plus:
 
 `MemberPaymentView`: a single `APIView` (extends `BaseAPIView`/`GenericAPIView`, not a router) mounted at `/api/payments/`. It implements `POST` and `GET`. `PUT`, `PATCH` and `DELETE` return `405`, and there is no `/{uuid}/` detail route.
 
-Despite the name, this view **never touches the `Payment` model**. `POST` creates a `Membership` row and updates the member's denormalised membership fields. `GET` lists `Membership` rows. Records created here will **not** appear in `GET /payments/` (section 7). They do appear in `GET /memberships/` and `GET /api/payments/`.
+`POST` creates a `Membership` row, a linked `Payment` row (`Payment.membership` FK), and updates the member's denormalised membership fields. `GET` lists `Membership` rows, not `Payment` rows. Records created here now **do** appear in `GET /payments/` (section 7), since a real `Payment` row is created alongside the `Membership`.
 
 **Permission:** `IsAdminOrGymOwner` (trainers/members get `403 "Admin or Gym Owner access required."`).
 
@@ -3487,31 +3499,32 @@ Record a membership "payment" for a member.
 | Field        | Type    | Required | Description / validation                                                                               |
 | ------------ | ------- | -------- | ------------------------------------------------------------------------------------------------------ |
 | `member_id`  | UUID    | Yes      | Member's UUID                                                                                          |
-| `date`       | string  | Yes      | `YYYY-MM-DD`. Validated but **not stored anywhere**                                                    |
-| `amount`     | decimal | Yes      | Max 10 digits, 2 dp, **min `0.01`**. Stored as `Membership.amount_paid`                                |
-| `mode`       | string  | Yes      | **Case-sensitive** `Cash` \| `Online`. Mapped to `cash` / `online` in `Membership.payment_mode`        |
+| `date`       | string  | Yes      | `YYYY-MM-DD`. Stored as `Payment.paid_on` (midnight UTC on that date)                                  |
+| `amount`     | decimal | Yes      | Max 10 digits, 2 dp, **min `0.01`**. Stored as both `Membership.amount_paid` and `Payment.amount`      |
+| `mode`       | string  | Yes      | `cash` \| `online` (lowercase). Stored as `Membership.payment_mode` and `Payment.mode`                 |
 | `start_date` | string  | Yes      | `YYYY-MM-DD`                                                                                           |
 | `end_date`   | string  | Yes      | `YYYY-MM-DD`, must be on or after `start_date`                                                         |
 | `plan`       | string  | No       | Max 100 chars, may be blank, default `""`. Free text (not validated against `Monthly`/`Quarterly`/...) |
 
-**Side effects (in order, no `transaction.atomic` and no `ATOMIC_REQUESTS`):**
+**Side effects (in order, inside one `transaction.atomic()` — all-or-nothing):**
 1. Creates a `Membership` with `member`, `start_date`, `end_date`, `amount_paid = amount`, `payment_mode = cash|online`, `plan`, `status = active`, and `created_by`/`updated_by` set to the caller. **No overlap check is run**, unlike `POST /memberships/`, so overlapping active memberships can be created here.
-2. Overwrites the member's `CustomUser.membership_start = start_date`, `membership_end = end_date`, `membership_status = "active"`, `membership_plan = plan` and `updated_by = caller`. The dates are **replaced, not extended**: nothing is added to the existing end date, and no end date is computed from `plan`.
-3. No `Payment` row, no invoice number and no notification. The `payment_received` template in `notifications/templates.py` exists, but no code in the repo renders it.
+2. Creates a linked `Payment` with `paid_by = member`, `membership = <the Membership just created>`, `amount`, `mode`, `status = paid`, `paid_on = date` (stored as midnight UTC on the submitted date), and `created_by`/`updated_by` set to the caller. An invoice number is auto-generated by `Payment.save()`.
+3. Overwrites the member's `CustomUser.membership_start = start_date`, `membership_end = end_date`, `membership_status = "active"`, `membership_plan = plan` and `updated_by = caller`. The dates are **replaced, not extended**: nothing is added to the existing end date, and no end date is computed from `plan`.
+4. No notification. The `payment_received` template in `notifications/templates.py` exists, but no code in the repo renders it.
 
-#### Response: known bug (still present)
+If anything in steps 1–3 raises, the whole transaction rolls back — no partial writes.
 
-`MemberPaymentResponseSerializer.amount` is declared without a `source`, and `Membership` has no `amount` attribute (only `amount_paid`). Serializing the response therefore raises `AttributeError` and the request ends in an unhandled **`HTTP 500`**. By then steps 1–2 above have **already been committed**. So a client that retries after the 500 creates a duplicate membership, and nothing blocks it because this endpoint has no overlap check.
+#### Response
 
-Intended `HTTP 201` shape (`MemberPaymentResponseSerializer`), which is **not** what is returned today:
+`HTTP 201` shape (`MemberPaymentResponseSerializer`), serialized off the created `Membership` (`date` is attached to it as a transient, non-persisted attribute before serialization so it reflects what was actually submitted):
 
 | Field         | Type    | Description                                                             |
 | ------------- | ------- | ----------------------------------------------------------------------- |
 | `uuid`        | UUID    | New `Membership` UUID                                                   |
 | `member_id`   | UUID    | `membership.member.uuid`                                                |
-| `amount`      | string  | Intended to mirror `amount_paid` (this is the field that currently crashes) |
+| `amount`      | string  | Mirrors `amount_paid`, e.g. `"1500.00"`                                 |
 | `amount_paid` | string  | Decimal string, e.g. `"1500.00"`                                        |
-| `date`        | string  | **`start_date` echoed back**, not the submitted `date`                  |
+| `date`        | string  | The submitted `date` (echoed back, not `start_date`)                   |
 | `start_date`  | string  | `YYYY-MM-DD`                                                            |
 | `end_date`    | string  | `YYYY-MM-DD`                                                            |
 | `mode`        | string  | `payment_mode`, lowercase `cash` \| `online`                            |
@@ -3525,14 +3538,14 @@ Intended `HTTP 201` shape (`MemberPaymentResponseSerializer`), which is **not** 
   "member_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
   "date": "2026-06-30",
   "amount": "1500.00",
-  "mode": "Cash",
+  "mode": "cash",
   "start_date": "2026-07-01",
   "end_date": "2026-07-31",
   "plan": "Monthly"
 }
 ```
 
-#### Example JSON Response (intended; see bug above)
+#### Example JSON Response
 
 ```json
 {
@@ -3541,7 +3554,7 @@ Intended `HTTP 201` shape (`MemberPaymentResponseSerializer`), which is **not** 
     "member_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
     "amount": "1500.00",
     "amount_paid": "1500.00",
-    "date": "2026-07-01",
+    "date": "2026-06-30",
     "start_date": "2026-07-01",
     "end_date": "2026-07-31",
     "mode": "cash",
@@ -3559,13 +3572,12 @@ Intended `HTTP 201` shape (`MemberPaymentResponseSerializer`), which is **not** 
 | Status | When                                                          | Body                                                                         |
 | ------ | ------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | `400`  | Missing field                                                 | e.g. `{"member_id": ["This field is required."]}`                            |
-| `400`  | `mode` not exactly `Cash`/`Online`                            | `{"mode": ["\"cash\" is not a valid choice."]}`                              |
+| `400`  | `mode` not exactly `cash`/`online`                            | `{"mode": ["\"Cash\" is not a valid choice."]}`                              |
 | `400`  | `amount` < 0.01                                               | `{"amount": ["Ensure this value is greater than or equal to 0.01."]}`        |
 | `400`  | `end_date` before `start_date`                                | `{"end_date": ["end_date must be on or after start_date."]}`                 |
 | `400`  | Malformed UUID/date                                           | e.g. `{"member_id": ["Must be a valid UUID."]}`                              |
 | `403`  | Trainer / member caller                                       | `message: "Admin or Gym Owner access required."`                             |
 | `404`  | Member not found / not a member / other gym / soft-deleted    | `message: "Member not found."`                                               |
-| `500`  | **Every otherwise-successful request** (see bug)              | Django 500 (HTML error page, or debug page if `DEBUG`); not wrapped by the envelope |
 
 ---
 
@@ -3653,9 +3665,13 @@ cannot call check-in/check-out at all (`403`). A gym owner can only
 
 > Attendance rows can also be written through the generic sync endpoint
 > [`POST /api/backup/upload/`](#11-backup--sync) (model label `attendance.Attendance`,
-> open to `IsAdmin | IsGymOwner | IsTrainer`). That path skips every rule in this section:
-> no geofence, no duplicate check, no photo requirement. The rules below apply only to
-> `/api/attendance/checkin/` and `/api/attendance/checkout/`.
+> open to `IsAdmin | IsGymOwner | IsTrainer`). Unlike the rest of this section (which is
+> self-service only, one auth token = one subject), the backup path lets a gym owner or
+> trainer write attendance **on behalf of** a member/trainer within their own scope — but
+> it enforces the exact same rules from `attendance.services` (the module this section's
+> rules live in): geofence, duplicate check, and trainer-only photo requirement, evaluated
+> against whoever the row's `user_id` actually is, not the caller. See
+> [§11](#11-backup--sync) for the gym/trainer scoping and rule details.
 
 **Members and trainers follow different rules:**
 
@@ -3747,7 +3763,7 @@ a URL string).
 | `check_in_lng`    | string (decimal)         | Check-in longitude, returned as a string                                                                                                                                                          |
 | `check_out_lat`   | string (decimal) \| null | `null` until a trainer checks out                                                                                                                                                                |
 | `check_out_lng`   | string (decimal) \| null | `null` until a trainer checks out                                                                                                                                                                |
-| `check_in_photo`  | string \| null           | Trainer only. This is a **relative** media URL such as `/media/uploads/<hex>.png`, because the serializer is built without the request and cannot make an absolute URL. Always `null` for a member. |
+| `check_in_photo`  | string \| null           | Trainer only, an absolute media URL such as `http://<host>/media/uploads/<hex>.png` (the serializer is built with `context={"request": request}`). Always `null` for a member. |
 | `check_out_photo` | string \| null           | `null` on check-in                                                                                                                                                                               |
 
 #### Example JSON Request (member)
@@ -3840,8 +3856,8 @@ have no check-out.
 
 `200 OK`. Returns the updated record, with the same fields as the
 [check-in response](#post-apiattendancecheckin). `check_out`, `check_out_lat`,
-`check_out_lng` and `check_out_photo` are now filled in, and `check_out_photo` is a
-relative `/media/...` URL.
+`check_out_lng` and `check_out_photo` are now filled in, and `check_out_photo` is an
+absolute URL, same as `check_in_photo`.
 
 #### Example JSON Request
 
@@ -3869,8 +3885,8 @@ relative `/media/...` URL.
     "check_in_lng": "72.877656",
     "check_out_lat": "19.075984",
     "check_out_lng": "72.877656",
-    "check_in_photo": "/media/uploads/3f9c2a7be1d04c0f8a1b2c3d4e5f6a7b.png",
-    "check_out_photo": "/media/uploads/8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a.png"
+    "check_in_photo": "http://localhost:8000/media/uploads/3f9c2a7be1d04c0f8a1b2c3d4e5f6a7b.png",
+    "check_out_photo": "http://localhost:8000/media/uploads/8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a.png"
   },
   "message": "",
   "status": 200,
@@ -4408,10 +4424,13 @@ The count comes from `core.middleware.RequestCounterMiddleware`, which keeps one
 `DailyRequestCount` row per date and adds 1 with `F("count") + 1` on every request
 (this stays correct across multiple workers).
 
-- **Counted:** every request whose path does **not** start with `/admin/`, `/media/`,
-  `/static/`, `/schema/` or `/docs/`. That means all API routes (`/auth/`, `/gyms/`,
-  `/users/`, `/api/...`, and so on), whether or not the request is authenticated. It
-  includes `401`, `403` and `404` responses, unknown URLs, and this report call itself.
+- **Counted:** a request whose path does **not** start with `/admin/`, `/media/`,
+  `/static/`, `/schema/`, `/docs/` or `/api/health/`, **and** whose response status isn't
+  `401` or `404`. That covers all real API routes (`/auth/`, `/gyms/`, `/users/`,
+  `/api/...`, and so on), including a `403` response (authenticated request, just not
+  permitted) and this report call itself.
+- **Not counted:** `401` (failed authentication — "pre-auth") and `404` (no matching
+  route) responses, the health-check liveness probe, and admin/media/static/docs traffic.
 - **Probably not counted:** CORS preflight `OPTIONS` requests. `CorsMiddleware` sits
   earlier in the middleware stack and normally answers them before this middleware runs.
   This is how django-cors-headers behaves, not something this repo checks.
@@ -4529,7 +4548,9 @@ Pushes a batch of client-side changes to the server as a list of change objects.
 
 **Permission:** `IsAdmin` | `IsGymOwner` | `IsTrainer` (members get `403`)
 
-> **No scoping.** The view doesn't check that a record belongs to the caller's gym, or to the caller at all. Any admin, gym owner or trainer can create, overwrite or soft-delete **any** attendance row by UUID.
+> **Scoped to the caller.** For `attendance.Attendance`, every `create`/`update`/`delete` is checked against `data.user_id` (the row's owner) — the *existing* owner on an update/delete, the submitted `user_id` on a create: an **admin** may target anyone; a **gym owner** only a member/trainer whose `gym` is the caller; a **trainer** only themself or a member whose `trainer` is the caller. A disallowed item is skipped and reported in `errors` (see below) — it does not fail the whole request. `user_id` itself can't be changed on an `update` (it's excluded from the field-assignment loop), so a caller can't authorize against a row they own and then reassign it to someone outside their scope.
+>
+> **Check-in rules enforced.** The same rules `/api/attendance/checkin/` and `/api/attendance/checkout/` apply (from `attendance.services`, shared by both code paths): the 50 m geofence, the duplicate check (open trainer session / same-day member check-in), and the trainer-only photo requirement — evaluated against **whichever of `check_in_*`/`check_out_*` fields are present** in `data`, using the *row's owner* as the subject (not necessarily the caller). A violation is also reported per-item in `errors`, not raised as a hard failure.
 
 #### Sync semantics
 
@@ -4537,10 +4558,10 @@ Each change is processed on its own, in order. There is **no transaction**: earl
 
 | `action`               | `data.uuid`                          | Behaviour                                                                                                                                                                                                                                                                         |
 | ---------------------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create` **or** `update` (identical, upsert) | present, row exists (including soft-deleted rows) | **LWW check:** if `data.updated_at` is present, parses, and is `<=` the server row's `updated_at`, the change is **skipped** (`skipped += 1`). Otherwise every key in `data` except `uuid`, `created_at`, `updated_at`, `created_by`, `updated_by` is `setattr`'d onto the row, `updated_by` = caller, and the row is saved (`updated += 1`). |
-| `create` / `update`    | present, row doesn't exist           | Row is **created with the client-supplied UUID** (`created += 1`). `created_at`/`updated_at` from the payload are discarded. `created_by` defaults to the caller unless the payload has it. `updated_by` = caller.                                                                    |
-| `create` / `update`    | absent                               | Row is created with a **server-generated UUID** (`created += 1`). **The new UUID is not returned**, so the client can't reference that row later. Clients should always generate the UUID themselves.                                                                              |
-| `delete`               | present, row exists                  | **Soft delete** (`is_deleted = true`, `deleted_at = now`, `updated_by` = caller) → `deleted += 1`. Deleting an already-deleted row soft-deletes it again and still counts as `deleted`.                                                                                        |
+| `create` **or** `update` (identical, upsert) | present, row exists (including soft-deleted rows) | **Scope + rule check first** (attendance only, see above) — a failure is reported in `errors` and nothing is written. **LWW check:** if `data.updated_at` is present, parses, and is `<=` the server row's `updated_at`, the change is **skipped** (`skipped += 1`). Otherwise every key in `data` except `uuid`, `created_at`, `updated_at`, `created_by`, `updated_by` (and, for `attendance.Attendance`, `user_id` too — ownership is immutable on update) is `setattr`'d onto the row, `updated_by` = caller, and the row is saved (`updated += 1`). |
+| `create` / `update`    | present, row doesn't exist           | **Scope + rule check first** (attendance only), same as above. Row is **created with the client-supplied UUID** (`created += 1`). `created_at`/`updated_at` from the payload are discarded. `created_by` defaults to the caller unless the payload has it. `updated_by` = caller.                                                                    |
+| `create` / `update`    | absent                               | **Scope + rule check first** (attendance only), same as above. Row is created with a **server-generated UUID** (`created += 1`). **The new UUID is not returned**, so the client can't reference that row later. Clients should always generate the UUID themselves.                                                                              |
+| `delete`               | present, row exists                  | **Scope check first** (attendance only): the caller must be authorized for the row's *current* owner, or the item is reported in `errors` and nothing is deleted. Otherwise: **Soft delete** (`is_deleted = true`, `deleted_at = now`, `updated_by` = caller) → `deleted += 1`. Deleting an already-deleted row soft-deletes it again and still counts as `deleted`.                                                                                        |
 | `delete`               | present, row doesn't exist           | `skipped += 1`                                                                                                                                                                                                                                                                    |
 | `delete`               | absent                               | **Silently ignored.** Not counted anywhere.                                                                                                                                                                                                                                         |
 | anything else          | —                                    | Error item `{"action": ..., "error": "Unknown action."}`                                                                                                                                                                                                                          |
@@ -4570,7 +4591,7 @@ Every element of `changes` must be a JSON object. A non-object element (e.g. a s
 | Field           | Type             | Required (create)  | Description                                                                                                                                                                                           |
 | --------------- | ---------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `uuid`          | UUID string      | Recommended        | Upsert key. Required for `delete`. An invalid UUID string becomes an error item (`"['“<value>” is not a valid UUID.']"`).                                                                            |
-| `user_id`       | UUID string      | Yes                | The member/trainer the visit belongs to. **Send `user_id`, not `user`**: `Attendance.user` is a ForeignKey, and assigning a raw UUID string to it raises `ValueError` (reported as an error item). `limit_choices_to` (member/trainer only) is **not** enforced here. |
+| `user_id`       | UUID string      | Yes                | The member/trainer the visit belongs to. **Send `user_id`, not `user`**: `Attendance.user` is a ForeignKey, and assigning a raw UUID string to it raises `ValueError` (reported as an error item). `limit_choices_to` (member/trainer only) is **not** DB-enforced, but the caller must be authorized for this user (see the scoping note above) — a UUID outside the caller's gym/assigned members is rejected as an error item, not a hard failure. On `update`, this field is read-only (ownership can't be reassigned). |
 | `check_in`      | datetime string  | Yes                | ISO-8601 with offset, e.g. `2026-06-30T06:00:00Z`                                                                                                                                                     |
 | `check_out`     | datetime \| null | No                 |                                                                                                                                                                                                       |
 | `check_in_lat`  | decimal          | Yes                | `max_digits=9, decimal_places=6`. Not nullable.                                                                                                                                                       |
@@ -4598,6 +4619,8 @@ Every element of `changes` must be a JSON object. A non-object element (e.g. a s
 | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `model` isn't `"attendance.Attendance"` (checked first) | `{"model": "<model or null>", "error": "Unknown or unsupported model."}`                         |
 | Known model, `action` not `create`/`update`/`delete`    | `{"action": "<action or null>", "error": "Unknown action."}`                                      |
+| (Attendance only) caller not authorized for `user_id`'s gym/assignment | `{"model": "attendance.Attendance", "action": "<action>", "error": "Not authorized to write attendance for this user."}` (create/update) or `"...delete..."` (delete) |
+| (Attendance only) check-in rule violated                | `{"model": "attendance.Attendance", "action": "<action>", "error": "<rule message>"}` — the same text as the live endpoints, e.g. `"A photo is required."`, `"You've already checked in today."`, `"You are 111m away from your gym — check-in/out must be within 50m of the gym location."` |
 | Any exception during create/update/delete               | `{"model": "<model>", "action": "<action>", "error": "<str(exception)>"}` (e.g. MySQL `(1048, "Column 'check_in' cannot be null")`) |
 
 #### Example JSON Request
@@ -4662,7 +4685,7 @@ Returns **active** (not soft-deleted) attendance rows, optionally filtered by us
 
 **Permission:** `IsAdmin` | `IsGymOwner` | `IsTrainer`
 
-> **No scoping.** Without `user_id`, this returns attendance for **every user in every gym**. With `user_id`, it returns that user's rows whatever gym they belong to.
+> **Scoped to the caller.** An **admin** gets every row, unfiltered. A **gym owner** only gets rows for members/trainers whose `gym` is the caller (same rule as `GET /api/attendance/?...`). A **trainer** only gets their own rows plus rows for members whose `trainer` is the caller. `user_id` (if given) narrows further within that scope — it can't be used to reach outside it; a `user_id` outside the caller's scope returns an empty `attendance` list, not that user's data.
 
 > **Deletions aren't propagated.** The queryset is `Attendance.active_objects` (`is_deleted=False`), so soft-deleted rows are simply missing from the response. No tombstones are sent, and the serializer doesn't include `is_deleted`/`updated_at`. An incremental (`since`) pull can't tell a client that a record was deleted.
 
@@ -4697,7 +4720,7 @@ Ordering: `Attendance.Meta.ordering = ["-check_in"]` (newest check-in first).
 | `check_in_lng`    | decimal string   |                                                                                                        |
 | `check_out_lat`   | decimal string \| null |                                                                                                  |
 | `check_out_lng`   | decimal string \| null |                                                                                                  |
-| `check_in_photo`  | string \| null   | Media URL. The serializer gets no request context here, so it's likely a **relative** path (e.g. `/media/attendance_photos/x.jpg`), not an absolute URL. |
+| `check_in_photo`  | string \| null   | Absolute media URL, e.g. `http://<host>/media/attendance_photos/x.jpg` (the serializer is built with `context={"request": request}`). |
 | `check_out_photo` | string \| null   | Same as above                                                                                          |
 
 `updated_at`, `created_at` and `is_deleted` are **not** returned. To run incremental sync, the client should record the envelope's request time (or its own clock) as the next `since`. Keep in mind that the envelope `time` has no offset and is in server local time.
@@ -4773,7 +4796,7 @@ Replaces the caller's **entire** server-side workout history with the request bo
 - Inside one `transaction.atomic()`, the server **hard-deletes** every `WorkoutSession` owned by the caller (cascading to exercises, sets and rest breaks), then inserts every session in the payload.
 - If anything raises, the whole transaction rolls back, the previous server copy stays intact, and you get a `400` with the exception text.
 - There are **no upsert keys, no conflict resolution, no timestamps and no tombstones**. The payload *is* the new state. Server UUIDs are regenerated on every sync and never exposed.
-- ⚠️ **An empty `sessions` array, or a body with no `sessions` key at all, wipes the user's entire server history** and returns `synced_sessions: 0`. Clients should never send a partial or empty history unless they mean to erase it.
+- **An empty `sessions` array, or a body with no `sessions` key at all, is rejected with `422` and makes no changes** — the delete-and-replace never runs. This guards against a client bug (or a genuinely empty local history) silently wiping a user's real server-side history.
 - Other users' data is never touched (covered by `test_sync_does_not_affect_other_users`).
 - **No serializer validation:** values go straight to `Model.objects.create()`. Type and constraint errors come from Django field conversion or MySQL (strict mode) and surface as `400` with the raw error string.
 - Booleans are coerced with Python `bool()`, so any non-empty string (including `"false"`) becomes `true`. Send real JSON booleans.
@@ -4782,7 +4805,7 @@ Replaces the caller's **entire** server-side workout history with the request bo
 
 | Field                         | Type            | Required | Validation / default                                                                                          |
 | ----------------------------- | --------------- | -------- | ------------------------------------------------------------------------------------------------------------- |
-| `sessions`                    | array           | No*      | Must be a JSON array. Defaults to `[]` if missing, *which deletes everything*.                                |
+| `sessions`                    | array           | **Yes**  | Must be a non-empty JSON array. Missing or `[]` → `422`, no changes made.                                     |
 | `sessions[].session_date`     | string          | **Yes**  | `YYYY-MM-DD` only. A datetime string is rejected. Missing/null → MySQL NOT NULL error.                        |
 | `sessions[].duration_minutes` | integer         | No       | `null`/`0`/missing → `0`. Unsigned; negative → MySQL out-of-range error.                                      |
 | `sessions[].notes`            | string \| null  | No       | Unlimited text                                                                                                |
@@ -4870,11 +4893,12 @@ Replaces the caller's **entire** server-side workout history with the request bo
 
 #### Error Responses
 
-All `400`s have `data: null` and put the text in `message`. Because of the rollback, no data changes on a `400`.
+All `400`s and the `422` have `data: null` and put the text in `message`. Because of the rollback (or the pre-transaction guard, for the `422`), no data changes on either.
 
 | Status | Condition                                   | `message` (examples)                                                                                          |
 | ------ | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `400`  | `sessions` isn't an array                   | `"sessions must be a list."`                                                                                  |
+| `422`  | `sessions` is empty or missing              | `"sessions was empty or missing; no changes were made to avoid erasing existing history."`                    |
 | `400`  | Missing/null `session_date`                 | `(1048, "Column 'session_date' cannot be null")`                                                              |
 | `400`  | Badly formatted `session_date`              | `['“2026-01-15T10:00:00Z” value has an invalid date format. It must be in YYYY-MM-DD format.']`               |
 | `400`  | Non-numeric number field                    | e.g. `Field 'weight_kg' expected a number but got 'abc'.`                                                     |
@@ -4955,13 +4979,13 @@ Replaces the caller's **entire** server-side body-measurement history (mirrors t
 
 **Permission:** `IsAuthenticatedUser` (any role; own data only)
 
-⚠️ An empty or missing `measurements` array **deletes all** of the caller's server-side measurements. No upsert keys, no timestamps-based merge, no tombstones, no versioning.
+An empty or missing `measurements` array is rejected with `422` and makes no changes. No upsert keys, no timestamps-based merge, no tombstones, no versioning.
 
 #### Request
 
 | Field                             | Type            | Required | Validation / default                                                                                                                                  |
 | --------------------------------- | --------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `measurements`                    | array           | No*      | Must be a JSON array. Defaults to `[]`, which *wipes history*.                                                                                        |
+| `measurements`                    | array           | **Yes**  | Must be a non-empty JSON array. Missing or `[]` → `422`, no changes made.                                                                             |
 | `measurements[].age`              | integer \| null | No       | Unsigned                                                                                                                                              |
 | `measurements[].gender`           | string \| null  | No       | Free text, max 20 chars, no enum enforced                                                                                                             |
 | `measurements[].is_correction`    | boolean         | No       | Default `false` (coerced with `bool()`)                                                                                                               |
@@ -5022,6 +5046,7 @@ Replaces the caller's **entire** server-side body-measurement history (mirrors t
 | Status | Condition                              | `message` (examples)                                                                                                   |
 | ------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
 | `400`  | `measurements` isn't an array          | `"measurements must be a list."`                                                                                       |
+| `422`  | `measurements` is empty or missing     | `"measurements was empty or missing; no changes were made to avoid erasing existing history."`                        |
 | `400`  | Missing/null `recorded_at`             | `(1048, "Column 'recorded_at' cannot be null")`                                                                        |
 | `400`  | Badly formatted `recorded_at`          | `['“<value>” value has an invalid format. It must be in YYYY-MM-DD HH:MM[:ss[.uuuuuu]][TZ] format.']`                  |
 | `400`  | Non-numeric number / negative `age` / `gender` > 20 chars / non-object element | Raw Django/MySQL error text                                                    |
@@ -5193,7 +5218,9 @@ Uploads an image and returns its absolute URL. This is step one for every image 
 | --- | --- | --- | --- |
 | `file` | file | Yes | Image file. Validated in this order: (1) DRF `ImageField` — must be a real file that Pillow can open; (2) extension (from the filename, case-insensitive) in `jpeg`, `jpg`, `png`, `webp`; (3) size ≤ 5 MB (`5 * 1024 * 1024` bytes) |
 
-Storage: saved via `default_storage` as `uploads/<uuid4 hex>.<ext>` under `MEDIA_ROOT` (i.e. `<BASE_DIR>/media/uploads/…`). The original filename is discarded; the extension is lower-cased. The file is not linked to any record until another request references its URL — uploaded files are never cleaned up.
+Storage: saved via `default_storage` as `uploads/<uuid4 hex>.<ext>` under `MEDIA_ROOT` (i.e. `<BASE_DIR>/media/uploads/…`). The original filename is discarded; the extension is lower-cased.
+
+The file is not linked to any record until another request references its URL. If a later create/update call replaces a field that already pointed at a different file (`CustomUser.profile_picture`, `Gym.gym_picture`, `Song.thumb_file`/`asset_file`, `Playlist.icon_file`/`cover_file`), that **old** file is now deleted automatically (`core.utils.delete_if_unreferenced`), as long as no other row still references that exact path. A file that's uploaded but never actually assigned to any field at all — the client abandons the edit, or crashes after upload — is **still never cleaned up**; there's no sweep job for those.
 
 #### Response
 
@@ -5707,12 +5734,10 @@ Flutter app opens a `wa.me` / `sms:` link itself).
 
 - **Admin**-created templates get `gym = null` → global, visible to admins and every gym owner.
 - **Gym owner**-created templates get `gym = request.user.gym_details` → visible to that gym owner (and admins).
-- Admin sees all non-deleted templates; a gym owner sees `gym == own gym_details` **or** `gym is null`.
+- Admin sees all non-deleted templates; a gym owner sees `gym == own gym_details` **or** `gym is null`, for **reads** (`list`/`retrieve`).
 - `gym` is read-only; it is always derived server-side and ignored if sent.
-- There is no per-object ownership check beyond this queryset filter. Consequently a
-  **gym owner can also `PUT` / `POST .../update/` / `DELETE` global admin templates**
-  (they're in the owner's queryset). A gym owner whose `gym_details` is null creates a
-  template with `gym = null`, i.e. a global template visible to every gym owner.
+- **Writes (`PUT` / `POST .../update/` / `DELETE`) are scoped separately and more narrowly than reads:** `get_queryset()` branches on `self.action` — for `update`/`partial_update_via_post`/`destroy`, a gym owner's queryset is `gym == own gym_details` only, excluding global (`gym = null`) templates entirely. A gym owner attempting to write a global template, or another gym's template, gets `404 "No NotificationTemplate matches the given query."` — it's simply absent from the write-scoped queryset, same as `GymViewSet`'s own-row write scoping. The template is still visible via `list`/`retrieve`, only writing to it is blocked. Admin is unrestricted for every action.
+- Edge case, not addressed by the above: a gym owner whose own `gym_details` is null would create a template with `gym = null` (indistinguishable from a global one), and — since their write-scope filter would then also evaluate to `gym__isnull=True` — could still write to *actual* global templates too. This shouldn't arise in practice (a `GYM_OWNER` normally always has `gym_details` set at creation), but it's a latent gap if that invariant is ever violated.
 
 ### Permission
 
@@ -5915,8 +5940,6 @@ These were found while rebuilding this document from the code. Read them before 
 
 ### 15.1 Bugs that break or corrupt data
 
-- **`POST /api/payments/` returns HTTP 500 even when it succeeds** ([§8](#8-member-payments-phase-3)). `MemberPaymentResponseSerializer.amount` has no `source`, so building the response raises `AttributeError`. By then the `Membership` row is already created and the member's tracking fields are already updated. A client that retries after the 500 creates a duplicate membership, because this endpoint doesn't run the overlap check.
-- **An empty workout or body-measurement upload deletes all of that user's server data** ([§11](#11-backup--sync)). If `sessions` or `measurements` is missing or `[]`, the user's existing server rows are hard-deleted and nothing replaces them.
 - **Backup upload changes are not atomic** (`POST /api/backup/upload/`). Each item in `changes` is saved on its own, so if a later item fails, the earlier ones stay saved.
 - **Duplicate `song_ids` in a playlist write cause a 500** ([§13](#13-music-playlists--songs)). On create, the playlist row may already be saved when the error happens.
 - **Some bad query parameters cause 500s instead of 400s:**
@@ -5927,30 +5950,21 @@ These were found while rebuilding this document from the code. Read them before 
 
 ### 15.2 Authorization and scoping gaps
 
-- **Permission classes only check `user_type`, never `status`.** A user who is disabled, suspended or soft-deleted after logging in keeps full access until their access token expires (24 h by default). Changing a password doesn't revoke existing tokens either. Logout only blacklists the refresh token, and doesn't check that the token belongs to the caller.
-- **Login checks account status before the password.** A 403 "disabled/suspended/deleted" response therefore reveals that a phone number is registered, even when the password is wrong.
-- **Membership writes aren't limited to the owner's gym** ([§6](#6-memberships)). A gym owner can create or reassign memberships for any member, including members of other gyms and soft-deleted members. Reads are limited to the owner's gym.
-- **Attendance backup sync (`/api/backup/upload/`, `/api/backup/download/`) isn't limited to a gym.** Any admin, gym owner or trainer can read or write any gym's attendance, and a download without `user_id` returns every gym's data. This path also skips the check-in rules: the 50 m distance check, the duplicate check and the photo requirement.
-- **Gym owners can edit and delete global (admin-created) notification templates** ([§14](#14-notifications)). Nothing checks who owns a template on write.
-- **The member `trainer` filter and `assign-trainer` accept trainers from other gyms or disabled trainers** ([§3](#3-user-management)).
+- **The member `?trainer=` list filter's choice validation is unscoped** ([§3](#3-user-management)): the auto-generated `django-filter` field validates the UUID against all trainers (any gym, including disabled ones), not just the caller's own gym's active trainers. This doesn't leak data — the surrounding queryset is still gym-scoped, so an out-of-gym or disabled trainer UUID just yields zero/normal results — but the filter's own error message doesn't say "not in your gym." (`assign-trainer` itself, and `PUT`'s `trainer_id`, are correctly gym- and active-scoped.)
 - **Most reports aren't available to trainers.** They can only call `GET /api/reports/inactive-members/` (`IsGymOwner | IsTrainer`). The other reports require `IsGymOwner`, `IsAdmin`, or `IsAdmin | IsGymOwner`.
 
 ### 15.3 Behaviour that differs from what you might expect
 
 - **Error `message` isn't always a string.** For validation errors, both `data` and `message` hold the field-error dict ([Conventions](#standard-response-envelope)).
-- **`gym_id` on trainer/member records is the gym owner's user UUID, not the `Gym` record's UUID.** Only `gym_uuid` on `/auth/profile/` refers to the `Gym` master record.
-- **Some responses return image URLs as relative `/media/...` paths instead of absolute URLs:**
-  - `enable`, `disable` and `assign-trainer` in [§3](#3-user-management)
-  - photos in attendance responses
 - **Nothing sets a membership to `expired`.** No scheduled job exists, and `membership-expiry` reads the user's `membership_end` field rather than the `Membership` table.
-- **No API creates `Payment` rows.** `/payments/` is read-only, and rows only come from the Django admin or fixtures.
-- **Payment `mode` casing differs:** the model uses `cash`/`online`, but `POST /api/payments/` accepts `Cash`/`Online`.
-- **Soft deletes don't cascade:**
-  - A deleted gym leaves its owner in place.
-  - A deleted owner leaves their trainers and members in place.
-  - A deleted trainer stays linked to members through `trainer_id`.
-  - Deleted songs keep their playlist links.
-  - There is no API to restore deleted users.
+- **No API creates `Payment` rows directly.** `/payments/` is read-only; rows come from `POST /api/payments/` ([§8](#8-member-payments-phase-3)), the Django admin, or fixtures.
+- **Soft deletes cascade for the ownership hierarchy, but only sever (never cascade) the trainer↔member assignment or a song's playlist links:**
+  - Deleting a `Gym` master record (`GymViewSet.destroy`) soft-deletes its owner (`Gym.soft_delete()` iterates `self.owners`), which in turn cascades per the next bullet.
+  - Deleting a gym owner (`CustomUser.soft_delete()`, `user_type == gym_owner`) soft-deletes every trainer and member with `gym = that owner` (`self.gym_users`).
+  - Deleting a trainer (`CustomUser.soft_delete()`, `user_type == trainer`) does **not** soft-delete their members — it only sets `trainer = null` on every member who had that trainer assigned (`self.trainer_members.update(trainer=None)`); the members themselves stay exactly as they were.
+  - Deleting a `Song` (`Song.soft_delete()`) deletes every `PlaylistSong` join row referencing it, so it disappears from every playlist's `song_ids`. Playlists and their other songs are untouched. The reverse isn't true: deleting a `Playlist` does **not** clean up its own now-orphaned `PlaylistSong` rows (harmless — they're never read once the playlist itself is soft-deleted).
+  - **Cascading delete is one-directional — there's still no restore API**, so re-enabling a gym owner (`enable`/`PUT status=active`) does **not** un-cascade: it only flips that one row back, and its trainers/members stay soft-deleted from the earlier cascade. There is no API to restore deleted users at all, cascaded or not.
+  - **Deliberately not cascaded: historical/audit rows.** `Membership.member`, `Payment.paid_by`/`Payment.membership`, `Attendance.user`, `WorkoutSession.user`, `BodyMeasurement.user` and `NotificationTemplate.gym` are all DB-level `CASCADE` FKs to a soft-deletable parent, but none of them are severed or cascade-soft-deleted when that parent is soft-deleted — a deleted member's `Membership`/`Payment`/`Attendance` rows stay exactly as they were. This is intentional, not an oversight: these are billing/attendance history, which should survive the person who generated it being removed, the same way an accounting ledger doesn't get rewritten when an employee leaves.
 - **Backup sync semantics** ([§11](#11-backup--sync)):
   - `since` is inclusive (`>=`), and an unparseable value is silently ignored.
   - Downloads never include deleted rows, so clients can't learn about deletions from the server.
@@ -5984,7 +5998,7 @@ These were found while rebuilding this document from the code. Read them before 
 - **`HEAD /api/health/` rejects `GET` with 405.** Monitors that only issue `GET` will see the service as unhealthy.
 - **Request counter writes to the DB on every request**, before auth, including health checks, `OPTIONS` preflights and 404s, and for non-`/api/` routes such as `/auth/`, `/gyms/`, `/users/`. A DB outage therefore fails every request, including the health check.
 - **Upload validation order/robustness.** The extension is taken from the client filename and checked separately from Pillow's content check, so e.g. a GIF named `x.png` passes and is stored as `.png`. The 5 MB check runs after the whole file has been received and parsed; there is no global request-size cap, so very large uploads are fully accepted to a temp file before being rejected.
-- **Uploaded files are never garbage-collected**; replacing an image field leaves the old file and any unused upload in `media/uploads/`.
+- **An uploaded file that's never actually assigned to a field is never garbage-collected.** Replacing an already-assigned image field, on the other hand, now deletes the old file automatically (see [§12](#12-utility)) — this only covers files that were genuinely replaced, not upload-then-abandon.
 - **`UploadedFileURLField` accepts any existing media file**, regardless of URL host or which user uploaded it, and regardless of subfolder (e.g. an existing `profile_pictures/…` path). Paths are not normalised before `default_storage.exists()`; a crafted `/media/../…` value would likely raise `SuspiciousFileOperation` (→ 500) rather than a clean 400 (not verified).
 - **Absolute URLs follow the incoming request's scheme/host.** No `SECURE_PROXY_SSL_HEADER` / `USE_X_FORWARDED_HOST` is set, so behind a TLS-terminating proxy, `upload-file` and image fields return `http://` URLs (and the proxy's upstream host if `Host` isn't forwarded).
 - **Media and static are served by Django in production** (`serve` view when `DEBUG` is off) — works, but Django docs discourage it for performance/security.
@@ -5997,4 +6011,3 @@ These were found while rebuilding this document from the code. Read them before 
 - **Logging config quirks:** the `errors` file handler has no level, so `errors.log` receives every DEBUG-level record from the root logger (same as `logs.log`); the `sql` and `system-error` handlers are defined but not attached to any logger.
 - **`SPECTACULAR_SETTINGS["SCHEMA_PATH_PREFIX"]` (`/api/v[0-9]`) matches no route** — leftover setting.
 - **`core/utils.py` helpers** (`haversine_distance_m`, `mail_letter_sender`) are internal; `mail_letter_sender` swallows all exceptions with `print(e)`, so email failures are silent to callers.
-- **Payment mode casing mismatch:** model enum `PaymentMode` is `cash`/`online`; `MemberPaymentSerializer.mode` accepts `Cash`/`Online`.

@@ -208,6 +208,45 @@ class ApiRequestsTodayViewTests(TestCase):
         self.client.get("/admin/login/")
         self.assertFalse(DailyRequestCount.objects.filter(date=today).exists())
 
+    def test_health_check_is_not_counted(self):
+        today = timezone.localdate()
+        DailyRequestCount.objects.filter(date=today).delete()
+        self.client.head("/api/health/")
+        self.assertFalse(DailyRequestCount.objects.filter(date=today).exists())
+
+    def test_404_is_not_counted(self):
+        today = timezone.localdate()
+        DailyRequestCount.objects.filter(date=today).delete()
+        self.client.get("/api/this-route-does-not-exist/")
+        self.assertFalse(DailyRequestCount.objects.filter(date=today).exists())
+
+    def test_failed_auth_is_not_counted(self):
+        today = timezone.localdate()
+        DailyRequestCount.objects.filter(date=today).delete()
+        res = self.client.get(reverse("auth-profile"))
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertFalse(DailyRequestCount.objects.filter(date=today).exists())
+
+    def test_real_authenticated_request_is_counted(self):
+        admin = make_user(
+            "9000000241", "Admin@1234", user_type=UserType.ADMIN,
+            is_staff=True, is_superuser=True,
+        )
+        login = self.client.post(
+            reverse("auth-login"),
+            {"phone_number": "9000000241", "password": "Admin@1234"},
+            format="json",
+        )
+        access = login.json()["data"]["access"]
+
+        today = timezone.localdate()
+        DailyRequestCount.objects.filter(date=today).delete()
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        res = client.get(reverse("auth-profile"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(DailyRequestCount.objects.get(date=today).count, 1)
+
 
 class WorkoutBackupsCountViewTests(TestCase):
     def setUp(self):

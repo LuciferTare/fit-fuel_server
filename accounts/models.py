@@ -50,6 +50,14 @@ class Gym(BaseModel):
     def __str__(self):
         return self.name
 
+    def soft_delete(self, deleted_by=None):
+        super().soft_delete(deleted_by=deleted_by)
+        # A gym with no master record can't have an active owner running it —
+        # cascades on to soft-delete the owner(s), which itself cascades on to
+        # their trainers/members (CustomUser.soft_delete below).
+        for owner in self.owners.filter(is_deleted=False):
+            owner.soft_delete(deleted_by=deleted_by)
+
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     # Primary key
@@ -179,6 +187,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             - ((today.month, today.day) < (dob.month, dob.day))
         )
 
+    def save(self, *args, **kwargs):
+        # `is_active` always mirrors `status`/`is_deleted`, so it never has to be
+        # remembered separately: this is what actually revokes a disabled,
+        # suspended, or soft-deleted user's already-issued JWTs (JWTAuthentication
+        # and the token-refresh/login rules all reject inactive users on every
+        # request, not just at login).
+        self.is_active = self.status == UserStatus.ACTIVE and not self.is_deleted
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"is_active"}
+        super().save(*args, **kwargs)
+
     def soft_delete(self, deleted_by=None):
         self.is_deleted = True
         self.status = UserStatus.DELETED
@@ -194,6 +214,17 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                 "updated_at",
             ]
         )
+
+        if self.user_type == UserType.GYM_OWNER:
+            # A deleted gym owner can no longer run their trainers/members —
+            # cascade the deletion onto both (each trainer's own soft_delete()
+            # in turn severs `trainer_id` on their members, see below).
+            for dependent in self.gym_users.filter(is_deleted=False):
+                dependent.soft_delete(deleted_by=deleted_by)
+        elif self.user_type == UserType.TRAINER:
+            # A deleted trainer is just unassigned, not a reason to touch
+            # their members at all — sever the pointer, don't cascade.
+            self.trainer_members.update(trainer=None)
 
     def clean(self):
         super().clean()

@@ -153,7 +153,9 @@ class AttendanceTests(TestCase):
             format="json",
         )
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
-        self.assertIsNotNone(res.json()["data"]["check_in_photo"])
+        photo_url = res.json()["data"]["check_in_photo"]
+        self.assertIsNotNone(photo_url)
+        self.assertTrue(photo_url.startswith("http"), photo_url)
 
     def test_trainer_checkout_without_photo_fails(self):
         self.client.force_authenticate(user=self.trainer)
@@ -174,6 +176,33 @@ class AttendanceTests(TestCase):
         )
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("photo is required", res.json()["message"])
+
+    def test_trainer_checkout_returns_absolute_photo_url(self):
+        self.client.force_authenticate(user=self.trainer)
+        self.client.post(
+            reverse("attendance-checkin"),
+            {
+                "timestamp": "2026-01-10T09:00:00Z",
+                "lat": NEAR_LAT,
+                "lng": GYM_LNG,
+                "photo": upload_test_photo(self.client),
+            },
+            format="json",
+        )
+        res = self.client.post(
+            reverse("attendance-checkout"),
+            {
+                "timestamp": "2026-01-10T10:00:00Z",
+                "lat": NEAR_LAT,
+                "lng": GYM_LNG,
+                "photo": upload_test_photo(self.client),
+            },
+            format="json",
+        )
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        photo_url = res.json()["data"]["check_out_photo"]
+        self.assertIsNotNone(photo_url)
+        self.assertTrue(photo_url.startswith("http"), photo_url)
 
     # ── Geofence ──────────────────────────────────────────────────────────
 
@@ -230,6 +259,24 @@ class AttendanceTests(TestCase):
         res = self.client.get(reverse("attendance-list"))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(len(res.json()["data"]), 1)
+
+    def test_attendance_list_returns_absolute_photo_url(self):
+        self.client.force_authenticate(user=self.trainer)
+        self.client.post(
+            reverse("attendance-checkin"),
+            {
+                "timestamp": "2026-01-10T09:00:00Z",
+                "lat": NEAR_LAT,
+                "lng": GYM_LNG,
+                "photo": upload_test_photo(self.client),
+            },
+            format="json",
+        )
+        res = self.client.get(reverse("attendance-list"))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        photo_url = res.json()["data"][0]["check_in_photo"]
+        self.assertIsNotNone(photo_url)
+        self.assertTrue(photo_url.startswith("http"), photo_url)
 
     def test_member_only_sees_own_attendance(self):
         other_member = make_user(

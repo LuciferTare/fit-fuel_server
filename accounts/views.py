@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework_simplejwt.exceptions import AuthenticationFailed, TokenError
+from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
@@ -64,6 +65,21 @@ class LogoutView(BaseAPIView):
         refresh_token = serializer.validated_data.get("refresh")
         try:
             token = RefreshToken(refresh_token)
+        except TokenError:
+            return Response(
+                "Invalid or already blacklisted token.",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token_user_id = token.payload.get(api_settings.USER_ID_CLAIM)
+        caller_user_id = str(getattr(request.user, api_settings.USER_ID_FIELD))
+        if token_user_id != caller_user_id:
+            return Response(
+                "This refresh token does not belong to the authenticated user.",
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
             token.blacklist()
         except TokenError:
             return Response(

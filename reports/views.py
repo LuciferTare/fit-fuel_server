@@ -7,7 +7,6 @@ from django.db.models import Count, OuterRef, Q, Subquery, Sum
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from rest_framework.response import Response
-
 from accounts.models import CustomUser, Payment, PaymentStatus, UserType
 from attendance.models import Attendance
 from backup.models import WorkoutSession
@@ -20,8 +19,7 @@ from core.views import BaseAPIView
 class InactiveMembersView(BaseAPIView):
     """GET /api/reports/inactive-members/?days=N
 
-    Gym owners see every inactive member in their gym; trainers see only
-    their own assigned members.
+    Gym owners see every inactive member in their gym; trainers see only their own assigned members.
     """
 
     permission_classes = [IsGymOwner | IsTrainer]
@@ -158,9 +156,7 @@ class MembershipExpiryView(BaseAPIView):
 class GymSubscriptionExpiryView(BaseAPIView):
     """GET /api/reports/gym-subscription-expiry/?days=X — admin-only.
 
-    Gym OWNER accounts whose own platform subscription (`membership_end`)
-    expires within the next X days (or already has). Distinct from
-    membership-expiry, which is about MEMBER subscriptions within one gym.
+    Gym OWNER accounts whose own platform subscription (`membership_end`) expires within the next X days (or already has). Distinct from membership-expiry, which is about MEMBER subscriptions within one gym.
     """
 
     permission_classes = [IsAdmin]
@@ -199,13 +195,7 @@ class GymSubscriptionExpiryView(BaseAPIView):
 
 class RevenueSummaryView(BaseAPIView):
     """GET /api/reports/revenue-summary/
-
-    Admin sees platform-wide revenue (gym-owner payments); gym owner sees
-    their own gym's revenue (member payments) — same scoping as
-    GET /payments/. `total_revenue`, `monthly_growth_percent`, and
-    `total_transactions` are for the current calendar month;
-    `pending_amount` is the current outstanding total regardless of when
-    it was incurred.
+    Admin sees platform-wide revenue (gym-owner payments); gym owner sees their own gym's revenue (member payments) — same scoping as GET /payments/. `total_revenue`, `monthly_growth_percent`, and `total_transactions` are for the current calendar month; `pending_amount` is the current outstanding total regardless of when it was incurred.
     """
 
     permission_classes = [IsAdmin | IsGymOwner]
@@ -257,9 +247,7 @@ class RevenueSummaryView(BaseAPIView):
 
 
 class StorageUsageView(BaseAPIView):
-    """GET /api/reports/storage-usage/ — admin-only total size (bytes) of
-    everything under MEDIA_ROOT (profile pictures, gym pictures, attendance
-    photos, uploaded music files, etc.)."""
+    """GET /api/reports/storage-usage/ — admin-only total size (bytes) of everything under MEDIA_ROOT (profile pictures, gym pictures, attendance photos, uploaded music files, etc.)."""
 
     permission_classes = [IsAdmin]
 
@@ -278,9 +266,7 @@ class StorageUsageView(BaseAPIView):
 
 
 class WorkoutBackupsCountView(BaseAPIView):
-    """GET /api/reports/workout-backups-count/ — admin-only count of
-    distinct users who have synced their workout history to the server via
-    `POST /api/backup/workouts/upload/` (backup.models.WorkoutSession)."""
+    """GET /api/reports/workout-backups-count/ — admin-only count of distinct users who have synced their workout history to the server via `POST /api/backup/workouts/upload/` (backup.models.WorkoutSession)."""
 
     permission_classes = [IsAdmin]
 
@@ -291,9 +277,7 @@ class WorkoutBackupsCountView(BaseAPIView):
 
 
 class ApiRequestsTodayView(BaseAPIView):
-    """GET /api/reports/api-requests-today/ — admin-only count of API
-    requests received so far today, tracked by
-    `core.middleware.RequestCounterMiddleware`."""
+    """GET /api/reports/api-requests-today/ — admin-only count of API requests received so far today, tracked by `core.middleware.RequestCounterMiddleware`."""
 
     permission_classes = [IsAdmin]
 

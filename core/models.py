@@ -48,10 +48,7 @@ class BaseModel(models.Model):
 
 
 class DailyRequestCount(models.Model):
-    """One row per calendar date, incremented per-request by
-    RequestCounterMiddleware — backs the admin dashboard's "API Requests
-    Today" card. Not a BaseModel: this is an internal counter, not a
-    business record (no uuid/audit trail needed)."""
+    """One row per calendar date, incremented per-request by RequestCounterMiddleware — backs the admin dashboard's "API Requests Today" card. Not a BaseModel: this is an internal counter, not a business record (no uuid/audit trail needed)."""
 
     date = models.DateField(unique=True, db_index=True)
     count = models.PositiveIntegerField(default=0)

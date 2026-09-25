@@ -5,6 +5,8 @@ from django.conf import settings
 from django.core.files.storage import default_storage
 from rest_framework import serializers
 
+from core.utils import delete_if_unreferenced
+
 UPLOAD_DIR = "uploads"
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
@@ -62,3 +64,32 @@ class UploadedFileURLField(serializers.ImageField):
         if not default_storage.exists(relative_path):
             raise serializers.ValidationError("Uploaded file not found.")
         return relative_path
+
+
+class CleansUpReplacedFilesMixin:
+    """For a `ModelSerializer` with one or more file/image fields written
+    through `UploadedFileURLField` (or a plain `FileField` fed the same
+    way): when `update()` replaces a field's value, deletes whichever old
+    file just got replaced — but only if no row anywhere still references
+    that path (see `core.utils.delete_if_unreferenced`).
+
+    Declare which *model* field names to watch via `cleanup_file_fields`.
+    Only usable where `update()` isn't already overridden to skip
+    `super().update()` — mix this in ahead of `serializers.ModelSerializer`
+    (or ahead of a subclass that still calls `super().update()`).
+    """
+
+    cleanup_file_fields = ()
+
+    def update(self, instance, validated_data):
+        old_paths = {
+            name: (getattr(instance, name).name or None)
+            for name in self.cleanup_file_fields
+        }
+        instance = super().update(instance, validated_data)
+        for name, old_path in old_paths.items():
+            new_field = getattr(instance, name)
+            new_path = new_field.name if new_field else None
+            if old_path and old_path != new_path:
+                delete_if_unreferenced(old_path)
+        return instance

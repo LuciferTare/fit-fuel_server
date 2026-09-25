@@ -73,6 +73,13 @@ class Song(MusicBaseModel):
     def __str__(self):
         return f"{self.id} — {self.title}"
 
+    def soft_delete(self, deleted_by=None):
+        super().soft_delete(deleted_by=deleted_by)
+        # A deleted song has no business staying in anyone's playlist —
+        # sever the join rows rather than leaving a dangling reference that
+        # get_song_ids would otherwise keep returning.
+        self.playlistsong_set.all().delete()
+
 
 class Playlist(MusicBaseModel):
     id = models.BigAutoField(primary_key=True)
