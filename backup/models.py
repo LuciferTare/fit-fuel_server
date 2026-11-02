@@ -99,6 +99,11 @@ class BodyMeasurement(BaseModel):
     waist_cm = models.FloatField(null=True, blank=True)
     biceps_cm = models.FloatField(null=True, blank=True)
     thighs_cm = models.FloatField(null=True, blank=True)
+    calf_cm = models.FloatField(null=True, blank=True)
+    forearm_cm = models.FloatField(null=True, blank=True)
+    # Deltoid-only girth: the app stores (circumference over the delts - chest_cm),
+    # not the raw tape reading, so the value isolates shoulder size from torso size.
+    shoulder_cm = models.FloatField(null=True, blank=True)
     neck_cm = models.FloatField(null=True, blank=True)
     hip_cm = models.FloatField(null=True, blank=True)
     body_fat_percent = models.FloatField(null=True, blank=True)

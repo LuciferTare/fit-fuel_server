@@ -24,6 +24,7 @@
 6.  [Memberships](#6-memberships)
 7.  [Payments](#7-payments)
 8.  [Member Payments (Phase 3)](#8-member-payments-phase-3)
+    - [8a. Direct UPI Payments](#8a-direct-upi-payments-manual-verification)
 9.  [Attendance](#9-attendance)
 10. [Reports](#10-reports)
 11. [Backup / Sync](#11-backup--sync)
@@ -56,6 +57,7 @@
 | `/api/reports/` | `reports.urls` | Reports |
 | `/api/backup/` | `backup.urls` | Backup / sync |
 | `/api/payments/` | `accounts.urls_member_payments` | Member payments (Phase 3) |
+| `/api/payment-settings/`, `/api/membership-plans/`, `/api/payment-requests/` | `accounts.urls_upi` | Direct UPI payments |
 | `/api/music/` | `music.urls` | Music |
 | `/api/notifications/` | `notifications.urls` | Notification templates |
 | `/schema/`, `/docs/` | `drf_spectacular` | OpenAPI schema / Swagger UI |
@@ -3655,6 +3657,66 @@ Items use `MembershipSerializer` (same fields as section 6: `uuid`, `member`, `s
 
 ---
 
+## 8a. Direct UPI Payments (manual verification)
+
+Payment-request workflow, **not** a gateway. A UPI app's return, a UTR or a screenshot is never proof of payment: only the intended recipient's `verify` call creates the `Membership` + `Payment` rows and activates the payer. Two payer/recipient pairs share the same endpoints: **member → their gym owner** and **gym owner → platform admin** (admin plans). Gym-owner payments create a `Payment` and update the owner's `membership_*` fields but **no** `Membership` row.
+
+All paths are under `/api/`. No `PATCH` (project convention): partial update of settings is `POST`. Enum/date fields are strings.
+
+| Endpoint | Method | Actor | Purpose |
+| --- | --- | --- | --- |
+| `/api/payment-settings/me/` | GET, POST | admin, gym owner | Read / partially update own UPI details (`multipart/form-data` or JSON) |
+| `/api/membership-plans/` | GET, POST | admin, gym owner | List / create own plans |
+| `/api/membership-plans/{uuid}/` | GET, PUT, DELETE | admin, gym owner | Retrieve / replace / soft-delete own plan |
+| `/api/membership-plans/{uuid}/update/` | POST | admin, gym owner | Partial update |
+| `/api/membership-plans/available/` | GET | member, gym owner | Active plans payable by caller (member: their gym owner's; gym owner: admin's) |
+| `/api/payment-requests/` | POST | member, gym owner | Create (or reuse the open) request from `plan_id` only |
+| `/api/payment-requests/mine/` | GET | member, gym owner | Payer's request history (paginated) |
+| `/api/payment-requests/{uuid}/submit/` | POST | payer | `pending_payment` → `submitted`; body `{ "utr": "optional" }` |
+| `/api/payment-requests/{uuid}/cancel/` | POST | payer | `pending_payment` → `cancelled` |
+| `/api/payment-requests/incoming/` | GET | admin, gym owner | Recipient's `submitted` queue, oldest first (paginated) |
+| `/api/payment-requests/incoming-count/` | GET | admin, gym owner | `{ "count": n }` for the badge |
+| `/api/payment-requests/{uuid}/verify/` | POST | recipient only | Atomically finalise; idempotent on an already-`verified` request |
+| `/api/payment-requests/{uuid}/reject/` | POST | recipient only | Body `{ "reason": "required" }` |
+
+### Payment settings — `PaymentSettingsSerializer`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `payment_upi_id` | string | Format `name@bank` (`400` otherwise). Blank clears it |
+| `payment_payee_name` | string | Max 100 |
+| `payment_qr` | string (URL) / file on write | Optional QR image |
+
+### Membership plan — `MembershipPlanSerializer`
+
+`uuid`, `name` (string), `amount` (decimal string, `> 0`), `duration_months` (integer 1–60), `is_active` (boolean), `created_at`. `provider` is always the caller. Members/trainers get `403` on the management routes.
+
+### Payment request — `PaymentRequestSerializer` (read-only)
+
+```json
+{
+  "data": {
+    "uuid": "…", "invoice_number": "INV-20261030-A1B2C3", "status": "submitted",
+    "payer": "…", "payer_name": "Asha Rao", "payer_phone": "9100000003",
+    "plan_name": "Monthly", "amount": "1500.00", "duration_months": 1,
+    "upi_id": "gym@okbank", "payee_name": "Iron Gym", "qr_image": null,
+    "utr": "123456789012", "submitted_at": "2026-10-30T10:00:00Z",
+    "expires_at": "2026-10-31T10:00:00Z", "decided_at": null,
+    "rejection_reason": "", "created_at": "2026-10-30T09:58:00Z"
+  },
+  "message": "", "status": 200, "time": "2026-10-30T10:00:01.000"
+}
+```
+
+- `POST /api/payment-requests/` body is **only** `{ "plan_id": "<uuid>" }`; amount, recipient, dates and status are always server-derived (extra fields are ignored). `201` for a new request, `200` when the open (`pending_payment`/`submitted`) request for that payer+plan is returned. `404` if the plan isn't payable by the caller; `400` if the recipient has no UPI ID.
+- Plan name, amount, duration, UPI ID, payee name and QR are **frozen** on the request. The request's `invoice_number` becomes the `Payment.invoice_number` on verify.
+- `status` values: `pending_payment`, `submitted`, `verified`, `rejected`, `cancelled`, `expired`. Open requests expire 24 h after creation (`pending_payment`) / after submission (`submitted`); expiry is applied lazily on every request to these endpoints.
+- Wrong-state actions return `409`. Someone who is not a party to the request gets `404`.
+- **Verify:** inside one transaction (request + payer rows locked) — start date = day after the payer's current `membership_end` if still in the future, else today; end = start + `duration_months` − 1 day. Creates `Membership` (members only, `payment_mode = online`) and a `paid` `Payment`, updates the payer's `membership_*` fields.
+- `GET /payments/` stays the verified-payment ledger; the legacy `POST /api/payments/` (section 8) is unchanged and will be removed after this flow is released.
+
+---
+
 ## 9. Attendance
 
 Self-service attendance. A **member** or a **trainer** logs their own attendance with
@@ -4995,6 +5057,9 @@ An empty or missing `measurements` array is rejected with `422` and makes no cha
 | `measurements[].waist_cm`         | number \| null  | No       | Float                                                                                                                                                 |
 | `measurements[].biceps_cm`        | number \| null  | No       | Float                                                                                                                                                 |
 | `measurements[].thighs_cm`        | number \| null  | No       | Float                                                                                                                                                 |
+| `measurements[].calf_cm`          | number \| null  | No       | Float                                                                                                                                                 |
+| `measurements[].forearm_cm`       | number \| null  | No       | Float                                                                                                                                                 |
+| `measurements[].shoulder_cm`      | number \| null  | No       | Float. Deltoid-only girth: the app sends (circumference over the delts minus `chest_cm`), not the raw tape reading. Null when chest wasn't measured.   |
 | `measurements[].neck_cm`          | number \| null  | No       | Float                                                                                                                                                 |
 | `measurements[].hip_cm`           | number \| null  | No       | Float                                                                                                                                                 |
 | `measurements[].body_fat_percent` | number \| null  | No       | Float. No range check.                                                                                                                                |
@@ -5021,6 +5086,9 @@ An empty or missing `measurements` array is rejected with `422` and makes no cha
       "waist_cm": 82.0,
       "biceps_cm": 35.0,
       "thighs_cm": 55.0,
+      "calf_cm": 37.0,
+      "forearm_cm": 28.0,
+      "shoulder_cm": 20.0,
       "neck_cm": 38.0,
       "hip_cm": 95.0,
       "body_fat_percent": 15.5,
@@ -5083,6 +5151,9 @@ Returns the caller's **entire** server-side body-measurement history, ordered by
         "waist_cm": 82.0,
         "biceps_cm": 35.0,
         "thighs_cm": 55.0,
+        "calf_cm": 37.0,
+        "forearm_cm": 28.0,
+        "shoulder_cm": 20.0,
         "neck_cm": 38.0,
         "hip_cm": 95.0,
         "body_fat_percent": 15.5,

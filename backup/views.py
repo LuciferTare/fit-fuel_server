@@ -425,6 +425,7 @@ class BodyMeasurementSyncUploadView(BaseAPIView):
                     "age": 28, "gender": "male", "is_correction": false,
                     "weight_kg": 72.5, "height_cm": 178.0, "chest_cm": 100.0,
                     "waist_cm": 82.0, "biceps_cm": 35.0, "thighs_cm": 55.0,
+                    "calf_cm": 37.0, "forearm_cm": 28.0, "shoulder_cm": 20.0,
                     "neck_cm": 38.0, "hip_cm": 95.0, "body_fat_percent": 15.5,
                     "recorded_at": "2026-01-15T08:30:00Z"
                 }
@@ -460,6 +461,9 @@ class BodyMeasurementSyncUploadView(BaseAPIView):
                         waist_cm=m.get("waist_cm"),
                         biceps_cm=m.get("biceps_cm"),
                         thighs_cm=m.get("thighs_cm"),
+                        calf_cm=m.get("calf_cm"),
+                        forearm_cm=m.get("forearm_cm"),
+                        shoulder_cm=m.get("shoulder_cm"),
                         neck_cm=m.get("neck_cm"),
                         hip_cm=m.get("hip_cm"),
                         body_fat_percent=m.get("body_fat_percent"),
@@ -497,6 +501,9 @@ class BodyMeasurementSyncDownloadView(BaseAPIView):
                 "waist_cm": m.waist_cm,
                 "biceps_cm": m.biceps_cm,
                 "thighs_cm": m.thighs_cm,
+                "calf_cm": m.calf_cm,
+                "forearm_cm": m.forearm_cm,
+                "shoulder_cm": m.shoulder_cm,
                 "neck_cm": m.neck_cm,
                 "hip_cm": m.hip_cm,
                 "body_fat_percent": m.body_fat_percent,

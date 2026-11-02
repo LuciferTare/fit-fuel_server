@@ -125,6 +125,11 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     )
     membership_plan = models.CharField(max_length=100, null=True, blank=True)
 
+    # UPI collection details — set only by ADMIN / GYM_OWNER (the payment recipients)
+    payment_upi_id = models.CharField(max_length=100, blank=True)
+    payment_payee_name = models.CharField(max_length=100, blank=True)
+    payment_qr = models.ImageField(upload_to="payment_qr/", null=True, blank=True)
+
     # Django flags
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
@@ -353,4 +358,95 @@ class Payment(BaseModel):
             self.invoice_number = (
                 f"INV-{timezone.now():%Y%m%d}-{self.uuid.hex[:6].upper()}"
             )
+        super().save(*args, **kwargs)
+
+
+# ── Direct-UPI manual verification ─────────────────────────────────────────────
+
+class MembershipPlan(BaseModel):
+    """A priced plan a recipient (admin or gym owner) offers to their payers."""
+
+    provider = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="membership_plans"
+    )
+    name = models.CharField(max_length=100)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    duration_months = models.PositiveSmallIntegerField()
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "membership_plans"
+        ordering = ["amount"]
+
+    def __str__(self):
+        return f"{self.name} — {self.amount}"
+
+
+class PaymentRequestStatus(models.TextChoices):
+    PENDING_PAYMENT = "pending_payment", "Pending Payment"
+    SUBMITTED = "submitted", "Submitted"
+    VERIFIED = "verified", "Verified"
+    REJECTED = "rejected", "Rejected"
+    CANCELLED = "cancelled", "Cancelled"
+    EXPIRED = "expired", "Expired"
+
+
+OPEN_REQUEST_STATUSES = (PaymentRequestStatus.PENDING_PAYMENT, PaymentRequestStatus.SUBMITTED)
+
+
+class PaymentRequest(BaseModel):
+    """One UPI payment attempt. Plan/recipient terms are frozen at creation; only the
+    recipient's manual verification turns it into a Membership + Payment."""
+
+    payer = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="payment_requests")
+    recipient = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="incoming_payment_requests"
+    )
+    plan = models.ForeignKey(
+        MembershipPlan, null=True, blank=True, on_delete=models.SET_NULL, related_name="requests"
+    )
+    # Snapshots — later edits to the plan or UPI settings must not change them.
+    plan_name = models.CharField(max_length=100)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    duration_months = models.PositiveSmallIntegerField()
+    upi_id = models.CharField(max_length=100)
+    payee_name = models.CharField(max_length=100)
+    qr_image = models.CharField(max_length=500, blank=True)  # storage path of the frozen QR
+
+    invoice_number = models.CharField(max_length=30, unique=True, editable=False)
+    status = models.CharField(
+        max_length=20,
+        choices=PaymentRequestStatus.choices,
+        default=PaymentRequestStatus.PENDING_PAYMENT,
+    )
+    utr = models.CharField(max_length=50, blank=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField()
+    # Set on verify or reject.
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.ForeignKey(
+        CustomUser, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    rejection_reason = models.CharField(max_length=255, blank=True)
+    membership = models.OneToOneField(
+        Membership, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+    payment = models.OneToOneField(
+        Payment, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
+    class Meta:
+        db_table = "payment_requests"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["recipient", "status", "created_at"], name="payreq_recip_status_idx"),
+            models.Index(fields=["payer", "status"], name="payreq_payer_status_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.invoice_number} — {self.amount} ({self.status})"
+
+    def save(self, *args, **kwargs):
+        if not self.invoice_number:
+            self.invoice_number = f"INV-{timezone.now():%Y%m%d}-{self.uuid.hex[:6].upper()}"
         super().save(*args, **kwargs)
