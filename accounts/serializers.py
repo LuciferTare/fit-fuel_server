@@ -36,22 +36,22 @@ def _run_model_validation(instance):
         )
 
 
-def _validate_password_strength(val):
+def _validate_password_strength(v):
     """Enforce strong-password rules used in serializer fields."""
     errors = []
-    if len(val) < 8:
+    if len(v) < 8:
         errors.append("Password must be at least 8 characters long.")
-    if not re.search(r"[A-Z]", val):
+    if not re.search(r"[A-Z]", v):
         errors.append("Password must contain at least one uppercase letter.")
-    if not re.search(r"[a-z]", val):
+    if not re.search(r"[a-z]", v):
         errors.append("Password must contain at least one lowercase letter.")
-    if not re.search(r"\d", val):
+    if not re.search(r"\d", v):
         errors.append("Password must contain at least one digit.")
-    if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', val):
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', v):
         errors.append("Password must contain at least one special character.")
     if errors:
         raise serializers.ValidationError(errors)
-    return val
+    return v
 
 
 # ── Auth serializers ──────────────────────────────────────────────────────────
@@ -121,14 +121,14 @@ class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True)
 
-    def validate_old_password(self, val):
+    def validate_old_password(self, v   ):
         user = self.context["request"].user
-        if not user.check_password(val):
+        if not user.check_password(v):
             raise serializers.ValidationError("Old password is incorrect.")
-        return val
+        return v
 
-    def validate_new_password(self, val):
-        return _validate_password_strength(val)
+    def validate_new_password(self, v):
+        return _validate_password_strength(v)
 
     def validate(self, attrs):
         if attrs["old_password"] == attrs["new_password"]:
@@ -276,13 +276,13 @@ class GymOwnerCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["uuid", "status", "created_at"]
 
-    def validate_phone_number(self, val):
-        if CustomUser.objects.filter(phone_number=val).exists():
+    def validate_phone_number(self, v):
+        if CustomUser.objects.filter(phone_number=v).exists():
             raise serializers.ValidationError("This phone number is already registered.")
-        return val
+        return v
 
-    def validate_password(self, val):
-        return _validate_password_strength(val)
+    def validate_password(self, v):
+        return _validate_password_strength(v)
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -349,8 +349,8 @@ class GymOwnerDetailSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         old_picture = instance.profile_picture.name or None
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        for attr, v in validated_data.items():
+            setattr(instance, attr, v)
         _run_model_validation(instance)
         instance.save()
         new_picture = instance.profile_picture.name or None
@@ -401,13 +401,13 @@ class TrainerCreateSerializer(serializers.ModelSerializer):
             "experience_level",
         ]
 
-    def validate_phone_number(self, val):
-        if CustomUser.objects.filter(phone_number=val).exists():
+    def validate_phone_number(self, v):
+        if CustomUser.objects.filter(phone_number=v).exists():
             raise serializers.ValidationError("This phone number is already registered.")
-        return val
+        return v
 
-    def validate_password(self, val):
-        return _validate_password_strength(val)
+    def validate_password(self, v):
+        return _validate_password_strength(v)
 
     def create(self, validated_data):
         password = validated_data.pop("password")
@@ -419,8 +419,6 @@ class TrainerCreateSerializer(serializers.ModelSerializer):
 
 
 class TrainerDetailSerializer(serializers.ModelSerializer):
-    # Named for what it actually holds — the gym OWNER's CustomUser uuid, not
-    # the Gym master record's uuid (see UserMeSerializer.gym_uuid for that).
     gym_owner_id = serializers.UUIDField(source="gym_id", read_only=True)
     age = serializers.IntegerField(read_only=True)
     password = serializers.CharField(write_only=True, required=False, allow_blank=False)
@@ -445,14 +443,14 @@ class TrainerDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["uuid", "phone_number", "user_type", "gym_owner_id", "created_at"]
 
-    def validate_password(self, val):
-        return _validate_password_strength(val)
+    def validate_password(self, v):
+        return _validate_password_strength(v)
 
     def update(self, instance, validated_data):
         old_picture = instance.profile_picture.name or None
         password = validated_data.pop("password", None)
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
+        for attr, v in validated_data.items():
+            setattr(instance, attr, v)
         if password:
             instance.set_password(password)
         _run_model_validation(instance)
@@ -487,13 +485,13 @@ class MemberCreateSerializer(serializers.ModelSerializer):
             "trainer_uuid",
         ]
 
-    def validate_phone_number(self, val):
-        if CustomUser.objects.filter(phone_number=val).exists():
+    def validate_phone_number(self, v):
+        if CustomUser.objects.filter(phone_number=v).exists():
             raise serializers.ValidationError("This phone number is already registered.")
-        return val
+        return v
 
-    def validate_password(self, val):
-        return _validate_password_strength(val)
+    def validate_password(self, v):
+        return _validate_password_strength(v)
 
     def validate(self, attrs):
         trainer_uuid = attrs.pop("trainer_uuid", None)
@@ -550,28 +548,28 @@ class MemberDetailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["uuid", "phone_number", "user_type", "gym_owner_id", "created_at"]
 
-    def validate_trainer_id(self, val):
-        if val is None:
-            return val
+    def validate_trainer_id(self, v):
+        if v is None:
+            return v
         request = self.context.get("request")
-        filters = {"uuid": val, "user_type": UserType.TRAINER}
+        filters = {"uuid": v, "user_type": UserType.TRAINER}
         if request and request.user.user_type == UserType.GYM_OWNER:
             filters["gym"] = request.user
         try:
             CustomUser.active_objects.get(**filters)
         except CustomUser.DoesNotExist:
             raise serializers.ValidationError("Trainer not found in this gym.")
-        return val
+        return v
 
-    def validate_password(self, val):
-        return _validate_password_strength(val)
+    def validate_password(self, v):
+        return _validate_password_strength(v)
 
     def update(self, instance, validated_data):
         old_picture = instance.profile_picture.name or None
         password = validated_data.pop("password", None)
         trainer_id = validated_data.pop("trainer_id", ...)
-        for attr, val in validated_data.items():
-            setattr(instance, attr, val)
+        for attr, v in validated_data.items():
+            setattr(instance, attr, v)
         if trainer_id is not ...:
             instance.trainer_id = trainer_id
         if password:
@@ -636,17 +634,17 @@ class MembershipSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["uuid", "status", "created_at", "updated_at"]
 
-    def validate_member(self, value):
-        if value.user_type != UserType.MEMBER:
+    def validate_member(self, v):
+        if v.user_type != UserType.MEMBER:
             raise serializers.ValidationError("User must be of type MEMBER.")
         request = self.context.get("request")
         if (
             request
             and request.user.user_type == UserType.GYM_OWNER
-            and value.gym_id != request.user.uuid
+            and v.gym_id != request.user.uuid
         ):
             raise serializers.ValidationError("Member not found in this gym.")
-        return value
+        return v
 
     def validate(self, attrs):
         start_date = attrs.get("start_date") or getattr(self.instance, "start_date", None)

@@ -1,4 +1,4 @@
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from uuid import uuid4
 
 from django.conf import settings
@@ -13,20 +13,19 @@ MAX_UPLOAD_SIZE_BYTES = 5 * 1024 * 1024
 
 
 class FileUploadSerializer(serializers.Serializer):
-    """Backs POST /api/upload-file/ — validates an image upload and stores
-    it under MEDIA_ROOT/uploads/, returning the storage-relative path."""
+    """Backs POST /api/upload-file/ — validates an image upload and stores it under MEDIA_ROOT/uploads/, returning the storage-relative path."""
 
     file = serializers.ImageField()
 
-    def validate_file(self, value):
-        ext = value.name.rsplit(".", 1)[-1].lower() if "." in value.name else ""
+    def validate_file(self, v):
+        ext = v.name.rsplit(".", 1)[-1].lower() if "." in v.name else ""
         if ext not in ALLOWED_IMAGE_EXTENSIONS:
             raise serializers.ValidationError(
                 f"Unsupported file type. Allowed: {', '.join(sorted(ALLOWED_IMAGE_EXTENSIONS))}."
             )
-        if value.size > MAX_UPLOAD_SIZE_BYTES:
+        if v.size > MAX_UPLOAD_SIZE_BYTES:
             raise serializers.ValidationError("File too large — max 5MB.")
-        return value
+        return v
 
     def save(self):
         file = self.validated_data["file"]
@@ -55,13 +54,18 @@ class UploadedFileURLField(serializers.ImageField):
             raise serializers.ValidationError(
                 "Expected the URL returned by POST /api/upload-file/, not a raw file."
             )
-        path = urlparse(data).path
-        if not path.startswith(settings.MEDIA_URL):
+        path = unquote(urlparse(data).path)
+        # Local storage serves under MEDIA_URL; B2 URLs are /<bucket>/<key>
+        # (path style) or /<key> (virtual-hosted style).
+        bucket = getattr(default_storage, "bucket_name", None)
+        prefixes = [settings.MEDIA_URL] + ([f"/{bucket}/", "/"] if bucket else [])
+        prefix = next((p for p in prefixes if path.startswith(p)), None)
+        if prefix is None:
             raise serializers.ValidationError(
                 "Must be a URL returned by POST /api/upload-file/."
             )
-        relative_path = path[len(settings.MEDIA_URL):]
-        if not default_storage.exists(relative_path):
+        relative_path = path[len(prefix):]
+        if not relative_path or not default_storage.exists(relative_path):
             raise serializers.ValidationError("Uploaded file not found.")
         return relative_path
 

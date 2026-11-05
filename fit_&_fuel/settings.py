@@ -217,6 +217,28 @@ APPEND_SLASH = True
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
+# Uploads go to Backblaze B2 when B2_BUCKET_NAME is set (Render's disk is wiped
+# on every deploy); otherwise local MEDIA_ROOT, so dev and tests stay offline.
+if os.getenv("B2_BUCKET_NAME"):
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "access_key": os.environ["B2_KEY_ID"],
+                "secret_key": os.environ["B2_APPLICATION_KEY"],
+                "bucket_name": os.environ["B2_BUCKET_NAME"],
+                "endpoint_url": os.environ["B2_ENDPOINT_URL"],
+                "region_name": os.environ["B2_REGION"],
+                "querystring_auth": False,  # public bucket, stable unsigned URLs
+                "default_acl": None,  # B2 has no per-object ACLs
+                "file_overwrite": False,
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        },
+    }
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.CustomUser"
 

@@ -159,13 +159,11 @@ class BackupUploadView(BaseAPIView):
                                 continue
                         excluded_fields = {"uuid", "created_at", "updated_at", "created_by", "updated_by"}
                         if Model is Attendance:
-                            # Ownership is immutable once created — otherwise the
-                            # scope check above (run against the *current* owner)
-                            # could be bypassed by reassigning the row afterwards.
+                            # Ownership is immutable once created — otherwise the scope check above (run against the *current* owner) could be bypassed by reassigning the row afterwards.
                             excluded_fields.add("user_id")
-                        for field, value in data.items():
+                        for field, v in data.items():
                             if field not in excluded_fields:
-                                setattr(instance, field, value)
+                                setattr(instance, field, v)
                         instance.updated_by = request.user
                         instance.save()
                         stats["updated"] += 1

@@ -1,30 +1,23 @@
 from rest_framework import serializers
-
 from core.serializers import CleansUpReplacedFilesMixin, UploadedFileURLField
 from music.models import Playlist, PlaylistSong, Song
 
 
-def _validate_opus(val):
-    name = getattr(val, "name", "") or ""
+def _validate_opus(v):
+    name = getattr(v, "name", "") or ""
     if not name.lower().endswith(".opus"):
         raise serializers.ValidationError("Audio must be a .opus file.")
-    return val
+    return v
 
 
 class MediaRefMixin:
-    """Resolve a media field to its host-relative ``/media/...`` path (remote
-    uploads; the app prefixes its own base URL) or the bundled ``assets/...``
-    path string (seeded rows)."""
+    """Resolve a media field to its host-relative ``/media/...`` path (remote uploads; the app prefixes its own base URL) or the bundled ``assets/...`` path string (seeded rows)."""
 
     def _resolve(self, file_field, ref):
         if file_field:
             return file_field.url
-        # Empty bundled ref → null, matching the app's source JSON (e.g. a song
-        # with no thumbnail).
         return ref or None
 
-
-# ── Songs ─────────────────────────────────────────────────────────────────────
 
 class SongSerializer(MediaRefMixin, serializers.ModelSerializer):
     """Read shape — matches the app's ``songs.json`` plus ``is_remote``."""
@@ -62,7 +55,6 @@ class SongCreateSerializer(CleansUpReplacedFilesMixin, serializers.ModelSerializ
         return super().create(validated_data)
 
 
-# ── Playlists ───────────────────────────────────────────────────────────────
 
 class PlaylistSerializer(MediaRefMixin, serializers.ModelSerializer):
     """Read shape — matches the app's ``playlists.json`` plus ``is_remote``."""
@@ -101,14 +93,14 @@ class PlaylistCreateSerializer(CleansUpReplacedFilesMixin, serializers.ModelSeri
         model = Playlist
         fields = ["title", "icon", "cover", "color", "song_ids"]
 
-    def validate_song_ids(self, value):
+    def validate_song_ids(self, v):
         existing = set(
-            Song.active_objects.filter(id__in=value).values_list("id", flat=True)
+            Song.active_objects.filter(id__in=v).values_list("id", flat=True)
         )
-        missing = [sid for sid in value if sid not in existing]
+        missing = [sid for sid in v if sid not in existing]
         if missing:
             raise serializers.ValidationError(f"Unknown song ids: {missing}")
-        return value
+        return v
 
     def create(self, validated_data):
         song_ids = validated_data.pop("song_ids", [])
