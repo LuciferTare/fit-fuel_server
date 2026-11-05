@@ -13,7 +13,7 @@ DEFAULT_DIR = Path(__file__).resolve().parents[2] / "seed_data"
 
 # Playlists whose media no longer ships inside the Flutter bundle: they are served
 # from MEDIA_ROOT as absolute URLs and downloaded on demand by the app.
-DEFAULT_REMOTE_PLAYLISTS = "4,5,6,7,8,9"
+DEFAULT_REMOTE_PLAYLISTS = "4,5,6,7,8,9,10"
 
 # MEDIA_ROOT-relative destinations, mirroring each field's ``upload_to``.
 AUDIO_DIR = "music/audio"

@@ -33,7 +33,6 @@ urlpatterns = [
         path("reports/", include("reports.urls")),
         path("backup/", include("backup.urls")),
         path("payments/", include("accounts.urls_member_payments")),
-        path("", include("accounts.urls_upi")),
         path("music/", include("music.urls")),
         path("notifications/", include("notifications.urls")),
     ])),

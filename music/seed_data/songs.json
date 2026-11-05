@@ -363,7 +363,7 @@
     "id": 46,
     "title": "Shivba Raja",
     "artist": "Avadhoot Gandhi, Devdutta Manisha Baji",
-    "thumb": "assets/audio-thumb/shivba_raja.png",
+    "thumb": "assets/audio-thumb/sher_shivraj.png",
     "asset": "assets/audio-opus/shivba_raja.opus",
     "duration": 233
   },
@@ -379,7 +379,7 @@
     "id": 48,
     "title": "Shivaba Malhari",
     "artist": "Pravin Tarde, Astad Kale, Ajay Purkar, Harish Dud hade, Ankit Mohan",
-    "thumb": "assets/audio-thumb/shivaba_malhari.png",
+    "thumb": "assets/audio-thumb/farzand.png",
     "asset": "assets/audio-opus/shivaba_malhari.opus",
     "duration": 130
   },
@@ -387,7 +387,7 @@
     "id": 49,
     "title": "Rani Fadakti Lakhon Jhende",
     "artist": "Ashutosh Mungle, Ajay Purkar",
-    "thumb": "assets/audio-thumb/rani_fadakti_lakhon_jhende.png",
+    "thumb": "assets/audio-thumb/fatteshikast.png",
     "asset": "assets/audio-opus/rani_fadakti_lakhon_jhende.opus",
     "duration": 211
   },
@@ -1334,5 +1334,56 @@
     "thumb": "assets/audio-thumb/aditya_rikhari.png",
     "asset": "assets/audio-opus/teri_yaad.opus",
     "duration": 230
+  },
+  {
+    "id": 169,
+    "title": "Ambabai Gondhalala Ye",
+    "artist": "Ajay-Atul, Guru",
+    "asset": "assets/audio-opus/ambabai_gondhalala_ye.opus",
+    "duration": 339
+  },
+  {
+    "id": 170,
+    "title": "Aaicha Udo Udo",
+    "artist": "Adarsh Shinde",
+    "asset": "assets/audio-opus/aaicha_udo_udo.opus",
+    "duration": 317
+  },
+  {
+    "id": 171,
+    "title": "Chang Bhala Chang Bhala",
+    "artist": "Ajay-Atul",
+    "asset": "assets/audio-opus/chang_bhala_chang_bhala.opus",
+    "duration": 203
+  },
+  {
+    "id": 172,
+    "title": "Jaagran Gondhal",
+    "artist": "Gulraj Singh, Prof. Dr. Ganesh Chandanshive",
+    "asset": "assets/audio-opus/jaagran_gondhal.opus",
+    "duration": 199
+  },
+  {
+    "id": 173,
+    "title": "Aai Bhavani Tuzya Krupane",
+    "artist": "Ajay-Atul",
+    "asset": "assets/audio-opus/aai_bhavani_tuzya_krupane.opus",
+    "duration": 250
+  },
+  {
+    "id": 174,
+    "title": "Aai Ambe Jagdambe",
+    "artist": "Adarsh Shinde",
+    "thumb": "assets/audio-thumb/farzand.png",
+    "asset": "assets/audio-opus/aai_ambe_jagdambe.opus",
+    "duration": 226
+  },
+  {
+    "id": 175,
+    "title": "Tu Jogawa Wadh Mai",
+    "artist": "Adarsh Shinde",
+    "thumb": "assets/audio-thumb/fatteshikast.png",
+    "asset": "assets/audio-opus/tu_jogawa_wadh_mai.opus",
+    "duration": 131
   }
 ]
