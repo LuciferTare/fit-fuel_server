@@ -35,6 +35,12 @@ class Gym(BaseModel):
     """Master record for a gym's name, referenced by its owner's CustomUser via `gym_details`."""
 
     name = models.CharField(max_length=255)
+    gym_picture = models.ImageField(upload_to="gym_pictures/", null=True, blank=True)
+    # Nullable at the DB layer only so existing rows survive the migration —
+    # required (and non-nullable) at the API layer: compulsory on create,
+    # editable but never clearable afterwards. See GymSerializer.
+    latitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    longitude = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     class Meta:
         verbose_name = "Gym"
@@ -43,6 +49,14 @@ class Gym(BaseModel):
 
     def __str__(self):
         return self.name
+
+    def soft_delete(self, deleted_by=None):
+        super().soft_delete(deleted_by=deleted_by)
+        # A gym with no master record can't have an active owner running it —
+        # cascades on to soft-delete the owner(s), which itself cascades on to
+        # their trainers/members (CustomUser.soft_delete below).
+        for owner in self.owners.filter(is_deleted=False):
+            owner.soft_delete(deleted_by=deleted_by)
 
 
 class CustomUser(AbstractBaseUser, PermissionsMixin):
@@ -60,6 +74,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     profile_picture = models.ImageField(
         upload_to="profile_pictures/", null=True, blank=True
     )
+    experience_level = models.CharField(max_length=50, null=True, blank=True)
 
     # Business
     user_type = models.CharField(
@@ -172,6 +187,18 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
             - ((today.month, today.day) < (dob.month, dob.day))
         )
 
+    def save(self, *args, **kwargs):
+        # `is_active` always mirrors `status`/`is_deleted`, so it never has to be
+        # remembered separately: this is what actually revokes a disabled,
+        # suspended, or soft-deleted user's already-issued JWTs (JWTAuthentication
+        # and the token-refresh/login rules all reject inactive users on every
+        # request, not just at login).
+        self.is_active = self.status == UserStatus.ACTIVE and not self.is_deleted
+        update_fields = kwargs.get("update_fields")
+        if update_fields is not None:
+            kwargs["update_fields"] = set(update_fields) | {"is_active"}
+        super().save(*args, **kwargs)
+
     def soft_delete(self, deleted_by=None):
         self.is_deleted = True
         self.status = UserStatus.DELETED
@@ -187,6 +214,17 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
                 "updated_at",
             ]
         )
+
+        if self.user_type == UserType.GYM_OWNER:
+            # A deleted gym owner can no longer run their trainers/members —
+            # cascade the deletion onto both (each trainer's own soft_delete()
+            # in turn severs `trainer_id` on their members, see below).
+            for dependent in self.gym_users.filter(is_deleted=False):
+                dependent.soft_delete(deleted_by=deleted_by)
+        elif self.user_type == UserType.TRAINER:
+            # A deleted trainer is just unassigned, not a reason to touch
+            # their members at all — sever the pointer, don't cascade.
+            self.trainer_members.update(trainer=None)
 
     def clean(self):
         super().clean()
@@ -229,6 +267,12 @@ class PaymentMode(models.TextChoices):
     ONLINE = "online", "Online"
 
 
+class PaymentStatus(models.TextChoices):
+    PAID = "paid", "Paid"
+    PENDING = "pending", "Pending"
+    OVERDUE = "overdue", "Overdue"
+
+
 # ── Membership model ───────────────────────────────────────────────────────────
 
 class Membership(BaseModel):
@@ -263,14 +307,37 @@ class Membership(BaseModel):
 # ── Payment model ──────────────────────────────────────────────────────────────
 
 class Payment(BaseModel):
+    # Who made the payment: a MEMBER (paying their gym owner) or a GYM_OWNER
+    # (paying the platform admin). Scoping in views is derived from this.
+    paid_by = models.ForeignKey(
+        CustomUser,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="payments_made",
+        limit_choices_to={"user_type__in": [UserType.MEMBER, UserType.GYM_OWNER]},
+    )
+    # Set only for member payments; gym-owner→admin payments have no membership.
     membership = models.ForeignKey(
         Membership,
+        null=True,
+        blank=True,
         on_delete=models.CASCADE,
         related_name="payments",
     )
+    invoice_number = models.CharField(
+        max_length=30, unique=True, null=True, blank=True, editable=False
+    )
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     mode = models.CharField(max_length=10, choices=PaymentMode.choices)
+    status = models.CharField(
+        max_length=10,
+        choices=PaymentStatus.choices,
+        default=PaymentStatus.PAID,
+        db_index=True,
+    )
     paid_on = models.DateTimeField(default=timezone.now)
+    due_date = models.DateField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Payment"
@@ -279,4 +346,11 @@ class Payment(BaseModel):
         ordering = ["-paid_on"]
 
     def __str__(self):
-        return f"Payment {self.uuid} — {self.amount} ({self.mode})"
+        return f"Payment {self.invoice_number or self.uuid} — {self.amount} ({self.mode})"
+
+    def save(self, *args, **kwargs):
+        if not self.invoice_number:
+            self.invoice_number = (
+                f"INV-{timezone.now():%Y%m%d}-{self.uuid.hex[:6].upper()}"
+            )
+        super().save(*args, **kwargs)

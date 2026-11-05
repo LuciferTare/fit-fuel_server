@@ -5,10 +5,6 @@ class IsAuthenticatedUser(permissions.IsAuthenticated):
     message = "You do not have access to this resource."
 
 
-class HavePermissions(permissions.DjangoModelPermissions):
-    message = "You do not have access to this resource."
-
-
 def _get_user_type():
     from accounts.models import UserType
     return UserType

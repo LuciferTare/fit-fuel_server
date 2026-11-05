@@ -1,6 +1,7 @@
 import ipaddress
 
 from django.contrib.gis.geoip2 import GeoIP2
+from django.core.files.storage import default_storage
 from django.http import HttpRequest, HttpResponse
 from django.views.decorators.http import require_http_methods
 from drf_spectacular.utils import extend_schema
@@ -18,6 +19,7 @@ from rest_framework.response import Response
 from user_agents import parse as parse_ua
 
 from core import renderers
+from core.serializers import FileUploadSerializer
 
 
 class NoAuthAPIView(GenericAPIView):
@@ -30,6 +32,19 @@ class BaseAPIView(GenericAPIView):
     renderer_classes = (renderers.ResponseRenderer,)
 
 
+@extend_schema(summary="Upload File", tags=["Utils"])
+class UploadFileView(BaseAPIView):
+    serializer_class = FileUploadSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            relative_path = serializer.save()
+            url = request.build_absolute_uri(default_storage.url(relative_path))
+            return Response({"url": url}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
 class BaseModelViewSet(viewsets.ModelViewSet):
     renderer_classes = (renderers.ResponseRenderer,)
     http_method_names = ["get", "post", "put", "delete", "head", "options"]
@@ -37,6 +52,11 @@ class BaseModelViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="update", url_name="update")
     def partial_update_via_post(self, request, *args, **kwargs):
         return self.partial_update(request, *args, **kwargs)
+
+
+class BaseReadOnlyModelViewSet(viewsets.ReadOnlyModelViewSet):
+    renderer_classes = (renderers.ResponseRenderer,)
+    http_method_names = ["get", "head", "options"]
 
 
 class NoAuthNoPermMixin:
