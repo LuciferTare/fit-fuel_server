@@ -74,7 +74,7 @@ venv.bak/
 static_collected/
 
 # Media uploads
-media/*
+# media/*
 
 # Allow geo_lite2 placeholder
 !static/geo_lite2/.gitkeep
