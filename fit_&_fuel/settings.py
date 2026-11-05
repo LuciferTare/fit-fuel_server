@@ -9,7 +9,7 @@ load_dotenv()
 SECRET_KEY = os.environ.get("SECRET_KEY")
 
 ENV = os.getenv("DJANGO_ENV", "production")
-DEBUG = ENV == "development"
+DEBUG = ENV == "production"
 
 ALLOWED_HOSTS = ["*"]
 CORS_ALLOW_ALL_ORIGINS = True
@@ -75,7 +75,6 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(
         minutes=int(os.environ.get("ACCESS_TOKEN_TIME", 1440))
     ),
-    # Refresh token: 30 days = 43200 minutes
     "REFRESH_TOKEN_LIFETIME": timedelta(
         minutes=int(os.environ.get("REFRESH_TOKEN_TIME", 43200))
     ),
@@ -94,9 +93,6 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
     "USER_AUTHENTICATION_RULE": "rest_framework_simplejwt.authentication.default_user_authentication_rule",
     "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.AccessToken",),
-    # Embeds a hash of the current password in every issued token and rejects
-    # it on use once the password no longer matches, so a password change
-    # revokes all previously-issued access/refresh tokens immediately.
     "CHECK_REVOKE_TOKEN": True,
     "REVOKE_TOKEN_CLAIM": "hash_password",
     "TOKEN_TYPE_CLAIM": "token_type",

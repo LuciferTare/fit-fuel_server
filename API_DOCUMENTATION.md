@@ -5297,10 +5297,10 @@ Every song and playlist carries `is_remote`:
 | `is_remote` | Stored in                                                   | Media fields in the response                                     |
 | ----------- | ----------------------------------------------------------- | ----------------------------------------------------------------- |
 | `false`     | `thumb_ref` / `asset_ref` / `icon_ref` / `cover_ref` (text) | The literal app-bundle path, e.g. `assets/audio-opus/foo.opus`    |
-| `true`      | `thumb_file` / `asset_file` / `icon_file` / `cover_file`    | Absolute URL built with `request.build_absolute_uri()`, e.g. `http://<host>/media/music/audio/foo.opus` |
+| `true`      | `thumb_file` / `asset_file` / `icon_file` / `cover_file`    | Host-relative media path (no scheme/host), e.g. `/media/music/audio/foo.opus` — the client prefixes its base URL |
 
 Resolution rule (`MediaRefMixin._resolve`): if the uploaded file field is set, return
-its absolute URL; otherwise return the `*_ref` string; if that is empty/null, return
+its host-relative `/media/...` path; otherwise return the `*_ref` string; if that is empty/null, return
 `null` (the app falls back to its default artwork).
 
 With the default seed (`--remote-playlists 4,5,6,7,8,9`), playlists `1..3` are bundled
@@ -5388,8 +5388,8 @@ List all non-deleted songs.
       "id": 133,
       "title": "3:59 AM",
       "artist": "Divine",
-      "thumb": "http://<host>/media/music/thumbs/<file>.png",
-      "asset": "http://<host>/media/music/audio/<file>.opus",
+      "thumb": "/media/music/thumbs/<file>.png",
+      "asset": "/media/music/audio/<file>.opus",
       "duration": 286,
       "is_remote": true
     }
@@ -5452,7 +5452,7 @@ asset=@new_track.opus
     "title": "New Track",
     "artist": "New Artist",
     "thumb": "http://<host>/media/uploads/3f9c1a2b4d5e6f708192a3b4c5d6e7f8.png",
-    "asset": "http://<host>/media/music/audio/new_track.opus",
+    "asset": "/media/music/audio/new_track.opus",
     "duration": 210,
     "is_remote": true
   },
@@ -5558,8 +5558,8 @@ List all non-deleted playlists.
     {
       "id": 6,
       "title": "Sambata Don",
-      "icon": "http://<host>/media/music/icons/sambata_icon.png",
-      "cover": "http://<host>/media/music/covers/sambata.png",
+      "icon": "/media/music/icons/sambata_icon.png",
+      "cover": "/media/music/covers/sambata.png",
       "color": "4B1D5A",
       "song_ids": [125, 126, 127],
       "is_remote": true

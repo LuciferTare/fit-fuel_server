@@ -12,14 +12,13 @@ def _validate_opus(val):
 
 
 class MediaRefMixin:
-    """Resolve a media field to an absolute URL (remote uploads) or the
-    bundled ``assets/...`` path string (seeded rows)."""
+    """Resolve a media field to its host-relative ``/media/...`` path (remote
+    uploads; the app prefixes its own base URL) or the bundled ``assets/...``
+    path string (seeded rows)."""
 
     def _resolve(self, file_field, ref):
         if file_field:
-            request = self.context.get("request")
-            url = file_field.url
-            return request.build_absolute_uri(url) if request else url
+            return file_field.url
         # Empty bundled ref → null, matching the app's source JSON (e.g. a song
         # with no thumbnail).
         return ref or None
