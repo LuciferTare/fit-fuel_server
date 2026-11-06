@@ -3,6 +3,7 @@ from rest_framework.response import Response
 
 from core.pagination import OptionalPagination
 from core.permissions import IsAdmin, IsAuthenticatedUser
+from core.utils import delete_if_unreferenced
 from core.views import BaseModelViewSet
 from music.models import Playlist, Song
 from music.serializers import (
@@ -76,6 +77,18 @@ class SongViewSet(_MusicViewSet):
     queryset = Song.active_objects.all()
     read_serializer_class = SongSerializer
     write_serializer_class = SongCreateSerializer
+
+    def destroy(self, request, *args, **kwargs):
+        """Hard delete: removes the row (its PlaylistSong rows cascade), then
+        the audio/thumbnail files from storage unless another row still
+        references the same path."""
+        instance = self.get_object()
+        thumb = instance.thumb_file.name or None
+        asset = instance.asset_file.name or None
+        instance.delete()
+        delete_if_unreferenced(thumb)
+        delete_if_unreferenced(asset)
+        return Response(status=204)
 
 
 @extend_schema(tags=["Music"])

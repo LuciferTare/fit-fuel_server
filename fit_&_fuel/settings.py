@@ -217,8 +217,6 @@ APPEND_SLASH = True
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
-# Uploads go to Backblaze B2 when B2_BUCKET_NAME is set (Render's disk is wiped
-# on every deploy); otherwise local MEDIA_ROOT, so dev and tests stay offline.
 if os.getenv("B2_BUCKET_NAME"):
     STORAGES = {
         "default": {
@@ -229,9 +227,10 @@ if os.getenv("B2_BUCKET_NAME"):
                 "bucket_name": os.environ["B2_BUCKET_NAME"],
                 "endpoint_url": os.environ["B2_ENDPOINT_URL"],
                 "region_name": os.environ["B2_REGION"],
-                "querystring_auth": False,  # public bucket, stable unsigned URLs
-                "default_acl": None,  # B2 has no per-object ACLs
-                "file_overwrite": False,
+                "querystring_auth": True,
+                "querystring_expire": int(os.getenv("B2_URL_EXPIRE_SECONDS", "86400")),
+                "default_acl": None,
+                "file_overwrite": True,
             },
         },
         "staticfiles": {

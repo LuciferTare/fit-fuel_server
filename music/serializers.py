@@ -39,7 +39,7 @@ class SongSerializer(MediaRefMixin, serializers.ModelSerializer):
 class SongCreateSerializer(CleansUpReplacedFilesMixin, serializers.ModelSerializer):
     """Write shape (multipart) for admin-added songs."""
 
-    thumb = UploadedFileURLField(source="thumb_file", required=True)
+    thumb = serializers.ImageField(source="thumb_file", required=True)
     asset = serializers.FileField(source="asset_file", validators=[_validate_opus])
     cleanup_file_fields = ("thumb_file", "asset_file")
 

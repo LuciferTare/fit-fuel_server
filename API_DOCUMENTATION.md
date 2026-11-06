@@ -5310,12 +5310,16 @@ remote. Anything created through the API is always `is_remote = true` (forced in
 
 ### Media upload model
 
-- `thumb` (song), `icon` and `cover` (playlist) are **URL strings**, not files. Upload
+- `thumb` (song) is a **real image file part** (jpg/png/webp, validated as an image) sent
+  straight to the song endpoint; it is stored at `music/thumbs/<original name>` (Django
+  only adds a suffix if that name already exists) — no `/api/upload-file/` step.
+  Song create/replace therefore needs `multipart/form-data`.
+- `icon` and `cover` (playlist) are **URL strings**, not files. Upload
   the image first via `POST /api/upload-file/` (see [Utility](#12-utility)) and send the
   returned `url`. The field (`core.serializers.UploadedFileURLField`) strips the URL to
   its path, requires it to start with `MEDIA_URL` (`/media/`), and requires the file
   to exist in storage. The stored file stays where `/api/upload-file/` put it
-  (`media/uploads/<hex>.<ext>`), it is **not** moved into `music/thumbs/` etc.
+  (`media/uploads/<hex>.<ext>`), it is **not** moved into `music/icons/` etc.
 - `asset` (song audio) is a **real file part** and must have a `.opus` filename.
   Song create/replace therefore needs `multipart/form-data`.
 - Playlists have no file fields, so playlist writes accept either
@@ -5430,7 +5434,7 @@ is set to the caller. The response uses the read shape (`SongSerializer`).
 | `title`    | string  | Yes      | Max 255 chars                                                                                                                |
 | `artist`   | string  | No       | Max 255 chars; blank allowed                                                                                                 |
 | `duration` | integer | No       | Seconds, `>= 0`; defaults to `0` if omitted                                                                                  |
-| `thumb`    | string  | Yes      | URL returned by `POST /api/upload-file/`. The field is `required=True` but also `allow_null=True`, so an explicit empty/null value is accepted and stores no thumbnail |
+| `thumb`    | file    | Yes      | Image file (validated as an image); stored under `music/thumbs/` keeping its original filename |
 | `asset`    | file    | Yes      | Audio file whose filename ends in `.opus` (only the extension is checked, not the content)                                  |
 
 Example (multipart form fields):
@@ -5439,7 +5443,7 @@ Example (multipart form fields):
 title=New Track
 artist=New Artist
 duration=210
-thumb=http://<host>/media/uploads/3f9c1a2b4d5e6f708192a3b4c5d6e7f8.png
+thumb=@new_track.png
 asset=@new_track.opus
 ```
 
@@ -5451,7 +5455,7 @@ asset=@new_track.opus
     "id": 166,
     "title": "New Track",
     "artist": "New Artist",
-    "thumb": "http://<host>/media/uploads/3f9c1a2b4d5e6f708192a3b4c5d6e7f8.png",
+    "thumb": "http://<host>/media/music/thumbs/new_track.png",
     "asset": "/media/music/audio/new_track.opus",
     "duration": 210,
     "is_remote": true
@@ -5471,9 +5475,7 @@ Validation errors (`400`) put the DRF error dict in both `data` and `message`, e
 | ------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `400 Bad Request`  | Missing `title`/`thumb`/`asset`: `"This field is required."`                                               |
 | `400 Bad Request`  | `asset` not `.opus`: `"Audio must be a .opus file."`                                                       |
-| `400 Bad Request`  | `thumb` sent as a raw file: `"Expected the URL returned by POST /api/upload-file/, not a raw file."`       |
-| `400 Bad Request`  | `thumb` URL path not under `/media/`: `"Must be a URL returned by POST /api/upload-file/."`                |
-| `400 Bad Request`  | `thumb` points to a non-existent file: `"Uploaded file not found."`                                        |
+| `400 Bad Request`  | `thumb` not a valid image: `"Upload a valid image. The file you uploaded was either not an image or a corrupted image."` |
 | `400 Bad Request`  | Negative `duration`: `"Ensure this value is greater than or equal to 0."`                                  |
 | `401 Unauthorized` | No/invalid token                                                                                           |
 | `403 Forbidden`    | Caller is not an admin: `"Admin access required."`                                                         |
@@ -5513,11 +5515,12 @@ Partial update (project's POST-instead-of-PATCH convention). **Permission:** `Is
 
 ### DELETE `/api/music/songs/{id}/`
 
-Soft delete: sets `is_deleted = true`, `deleted_at = now()`. The id is never reused.
-**Permission:** `IsAdmin`. Returns `204 No Content`.
-
-> Soft-deleting a song does **not** remove its `PlaylistSong` rows, so deleted song ids
-> keep appearing in the `song_ids` of playlists that contained them.
+**Hard delete.** Removes the song row and its `PlaylistSong` rows (the id disappears from
+every playlist's `song_ids`), then deletes the song's `.opus` and thumbnail files from
+storage (B2 or local). A file is kept if any other row (e.g. another song using the same
+thumbnail) still references that exact path (`core.utils.delete_if_unreferenced`).
+**Permission:** `IsAdmin`. Returns `204 No Content`. Not reversible. (Playlists are
+still soft-deleted.)
 
 ---
 

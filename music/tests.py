@@ -31,7 +31,7 @@ def tiny_opus(name="asset.opus"):
 
 def upload_test_png(client, name="thumb.png"):
     """POST a tiny real image to /api/upload-file/ and return its URL — image
-    fields (thumb/icon/cover) now only accept an already-uploaded file's URL,
+    fields (icon/cover) now only accept an already-uploaded file's URL,
     not a raw multipart file (asset/audio is unaffected — still a real file)."""
     res = client.post(
         reverse("upload-file"), {"file": tiny_png(name)}, format="multipart"
@@ -70,7 +70,7 @@ class SongViewSetTests(TestCase):
                 "title": "New Song",
                 "artist": "New Artist",
                 "duration": 200,
-                "thumb": upload_test_png(self.client),
+                "thumb": tiny_png(),
                 "asset": tiny_opus(),
             },
             format="multipart",
@@ -86,7 +86,7 @@ class SongViewSetTests(TestCase):
                 "title": "Replaced Title",
                 "artist": "Replaced Artist",
                 "duration": 300,
-                "thumb": upload_test_png(self.client),
+                "thumb": tiny_png(),
                 "asset": tiny_opus(),
             },
             format="multipart",
@@ -113,11 +113,26 @@ class SongViewSetTests(TestCase):
         self.client.force_authenticate(user=self.admin)
         res = self.client.delete(reverse("song-detail", args=[self.song.id]))
         self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
-        self.song.refresh_from_db()
-        self.assertTrue(self.song.is_deleted)
+        self.assertFalse(Song.objects.filter(pk=self.song.id).exists())
         list_res = self.client.get(reverse("song-list"))
         ids = [row["id"] for row in list_res.json()["data"]]
         self.assertNotIn(self.song.id, ids)
+
+    def test_deleting_song_removes_its_files_unless_shared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with override_settings(MEDIA_ROOT=tmp):
+                (Path(tmp) / "a.opus").write_bytes(b"x")
+                (Path(tmp) / "solo.png").write_bytes(b"x")
+                (Path(tmp) / "shared.png").write_bytes(b"x")
+                self.song.asset_file = "a.opus"
+                self.song.thumb_file = "shared.png"
+                self.song.save()
+                Song.objects.create(title="Other", thumb_file="shared.png")
+                self.client.force_authenticate(user=self.admin)
+                res = self.client.delete(reverse("song-detail", args=[self.song.id]))
+                self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+                self.assertFalse(default_storage.exists("a.opus"))
+                self.assertTrue(default_storage.exists("shared.png"))
 
     def test_deleting_song_removes_it_from_playlists(self):
         playlist = Playlist.objects.create(title="Workout Mix", created_by=self.admin)
